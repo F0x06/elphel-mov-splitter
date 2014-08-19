@@ -1,4 +1,3 @@
-elphel-mov-splitter
-===================
+## elphel-mov-splitter<br />Elphel MOV to jp4 splitter using hachoir.
 
-elphel-mov-splitter
+>Elphel MOV to jp4 splitter using hachoir.
