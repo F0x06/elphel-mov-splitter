@@ -34,10 +34,13 @@
 #      You are required to attribute the work as explained in the "Usage and
 #      Attribution" section of <http://foxel.ch/license>.
 
-if [ "$#" -ne 2 ]; then
-    echo "Usage: $(basename $0) <Input folder> <Output folder>"
+if [ "$#" -ne 3 ]; then
+    echo "Usage: $(basename $0) <Input folder> <Output folder> <Trash Folder>"
     exit
 fi
+
+mkdir -p $2
+mkdir -p $3
 
 echo "Step 1 extracting files..."
 for d in $1/*
@@ -55,6 +58,28 @@ do
 				hachoir-subfile --parser=jpeg $f $2 &> /dev/null
 				echo "Renamming files..."
 				exiftool "-filename<\${DateTimeOriginal}_\${SubSecTimeOriginal}_$dir.jp4" -d %s -q -q -m $2/file-*
+			fi
+		done
+	fi
+done
+
+echo "Step 2 filtering files..."
+for f in $2/*.jp4; do
+
+	filename=$(basename $f)
+	timestamp_full=${filename%.*}
+	timestamp=$(echo $timestamp_full | cut -d'_' -f 1-2)
+
+	if [ -f $f ]; then
+		for i in $(seq 1 9); do 
+			filepath=`echo -e -n "$2/$timestamp" && echo -e -n "_$i.jp4"`
+
+			if [ -f $filepath ]; then
+				continue
+			else
+				echo "Incomplete timestamp $timestamp"
+				mv $2/$timestamp* $3/
+				break
 			fi
 		done
 	fi
