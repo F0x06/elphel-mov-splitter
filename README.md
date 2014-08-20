@@ -2,6 +2,10 @@
 
 >Elphel MOV to jp4 splitter using hachoir.
 
+### Requirements
+
+    sudo apt-get install hachoir-subfile exiftool
+
 ### Usage
     Usage: mov_splitter.sh <Input folder> <Output folder> <Trash Folder>
 
