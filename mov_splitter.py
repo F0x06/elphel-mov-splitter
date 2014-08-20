@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import sys
 import glob
 import os
@@ -97,7 +99,7 @@ def main():
 			renameImages(mn, fn)
 
 			Processed_Files+=1
-			
+
 		Module_Index+=1 
 
 	print "Filtering images..."
