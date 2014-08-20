@@ -39,48 +39,66 @@ if [ "$#" -ne 3 ]; then
     exit
 fi
 
-mkdir -p $2
-mkdir -p $3
+# Remove slashs at the end of paths for a fancy output
+input=${1%/}
+output=${2%/}
+trash=${3%/}
 
-echo "Step 1 extracting files..."
-for d in $1/*
+# Create destination directories
+mkdir -p $output
+mkdir -p $trash
+
+# Statistics timer initializer
+stats_start=$(date +%s.%N)
+
+# Extracting jp4 files from MOV files
+echo "Step 1 splitting MOV files..."
+for d in $input/*
 do
 	dir=$(basename $d)
 
 	if [ -d $d ]; then
-		echo "Processing folder $dir..." 
+		echo "Processing camera module $dir..."
 		for f in $d/*.mov
 		do
 			filename=$(basename "$f")
 			timestamp="${filename%.*}"
 			if [ -f $f ]; then
 				echo "Extracting $f..."
-				hachoir-subfile --parser=jpeg $f $2 &> /dev/null
-				echo "Renamming files..."
-				exiftool "-filename<\${DateTimeOriginal}_\${SubSecTimeOriginal}_$dir.jp4" -d %s -q -q -m $2/file-*
+				hachoir-subfile --parser=jpeg $f $output &> /dev/null
+				echo "Renaming files..."
+				exiftool "-filename<\${DateTimeOriginal}_\${SubSecTimeOriginal}_$dir.jp4" -d %s -q -q -m $output/file-*
 			fi
 		done
 	fi
 done
 
-echo "Step 2 filtering files..."
-for f in $2/*.jp4; do
+# Filter jp4 images, move to trash folder all sequences with missing images (Need to have 9 images per-timestamp)
+echo "Step 2 filtering jp4 files..."
+for f in $output/*.jp4; do
 
 	filename=$(basename $f)
 	timestamp_full=${filename%.*}
 	timestamp=$(echo $timestamp_full | cut -d'_' -f 1-2)
 
 	if [ -f $f ]; then
-		for i in $(seq 1 9); do 
-			filepath=`echo -e -n "$2/$timestamp" && echo -e -n "_$i.jp4"`
+		for i in $(seq 1 9); do
+			filepath=`echo -e -n "$output/$timestamp" && echo -e -n "_$i.jp4"`
 
 			if [ -f $filepath ]; then
 				continue
 			else
 				echo "Incomplete timestamp $timestamp"
-				mv $2/$timestamp* $3/
+				mv $output/$timestamp* $trash/
 				break
 			fi
 		done
 	fi
 done
+
+# Display statistics
+stats_end=$(date +%s.%N)
+run_time=$(python -c "print '%02um:%02us' % ((${stats_end} - ${stats_start})/60, (${stats_end} - ${stats_start})%60)")
+
+echo "Done in $run_time, $(find $output -type f -iname *.jp4 | wc -l) images splitted ($(du -sh $output | cut -f 1))," \
+"$(find $trash -type f -iname *.jp4 | wc -l) images trashed ($(du -sh $trash | cut -f 1))"
