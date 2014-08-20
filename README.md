@@ -4,6 +4,10 @@
 
 ### Requirements
 
+1. [hachoir-subfile](https://bitbucket.org/haypo/hachoir/wiki/hachoir-subfile)
+2. [exiftool](http://www.sno.phy.queensu.ca/~phil/exiftool/)
+
+
     sudo apt-get install hachoir-subfile exiftool
 
 ### Usage
