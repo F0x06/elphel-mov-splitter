@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# elphel-parallel-processing - Elphel camera array images post processing using GNU parallel
+# elphel-mov-splitter - Elphel MOV to jp4 splitter using hachoir
 #
 # Copyright (c) 2013-2014 FOXEL SA - http://foxel.ch
 # Please read <http://foxel.ch/license> for more information.
