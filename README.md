@@ -1,6 +1,6 @@
-## elphel-mov-splitter<br />Elphel MOV to jp4 splitter using hachoir.
+## elphel-mov-splitter<br />Elphel MOV to jp4 splitter using [hachoir](https://bitbucket.org/haypo/hachoir/).
 
->Elphel MOV to jp4 splitter using hachoir.
+>Elphel MOV to jp4 splitter using [hachoir](https://bitbucket.org/haypo/hachoir/).
 
 ### Requirements
 
