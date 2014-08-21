@@ -24,6 +24,7 @@ Modules = []
 sys.__stdout = sys.stdout
 devnull = open(os.devnull, "w")
 
+# Function to retrive each timestamps into an array of strings
 def getTimeStamps():
 	TimeStamps = []
 
@@ -38,7 +39,8 @@ def getTimeStamps():
 
 	return sorted(TimeStamps)
 
-def renameImages(mn, fn):
+# Function to rename all images generated images by hachoir to a correct format (UnixTimeSTamp_SubSecTime_Module.jp4)
+def renameImages(mn):
 	for fn in glob.glob("%s/%s" % (Output, "file-*.jpg")):
 		f = open(fn, 'rb')
 		tags = exifread.process_file(f)
@@ -49,6 +51,7 @@ def renameImages(mn, fn):
 
 		os.rename(fn, "%s/%s.jp4" % (Output, OutName))
 
+# Function to move all incomplete sequences to Trash folder, a complete sequence need to be 1-9
 def filterImages():
 	for ts in getTimeStamps():
 
@@ -60,7 +63,11 @@ def filterImages():
 				break
 			else:
 				continue
+
+# Program entry point function
 def main():
+	global Input, Output, Trash
+
 	if len(sys.argv) < 4:
 		print "Usage: %s <Input folder> <Output folder> <Trash folder>" % sys.argv[0]
 		return
@@ -96,7 +103,7 @@ def main():
 			sys.stdout = sys.__stdout
 
 			print "Renaming images..."
-			renameImages(mn, fn)
+			renameImages(mn)
 
 			Processed_Files+=1
 
@@ -105,6 +112,6 @@ def main():
 	print "Filtering images..."
 	filterImages()
 
-
+# Program entry point
 if __name__ == "__main__":
     main()
