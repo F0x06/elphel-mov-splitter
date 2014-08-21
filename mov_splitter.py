@@ -40,6 +40,8 @@ import os
 import exifread
 import shutil
 from datetime import datetime
+from functools import wraps
+from time import time
 
 
 from hachoir_subfile.search import SearchSubfile
@@ -55,6 +57,22 @@ Total_Files = 0
 Processed_Files = 0
 
 Modules = []
+
+# Function to moditor execution time of functions
+def timed(f):
+    @wraps(f)
+    def wrapper(*args, **kwds):
+        if len(sys.argv) >= 5:
+            start = time()
+
+        result = f(*args, **kwds)
+
+        if len(sys.argv) >= 5:
+            elapsed = time() - start
+            print "%s took %ds to finish" % (f.__name__, elapsed)
+            
+        return result
+    return wrapper
 
 # Function to disable __Output__ on function call
 class suppress_stdout_stderr(object):
@@ -81,6 +99,7 @@ class suppress_stdout_stderr(object):
         os.close(self.null_fds[1])
 
 # Function to retrive each timestamps into an array of strings
+@timed
 def getTimeStamps():
 
     # local variable
@@ -104,6 +123,7 @@ def getTimeStamps():
     return sorted(TimeStamps)
 
 # Function to rename all images generated images by hachoir to a correct format (UnixTimeSTamp_SubSecTime_Module.jp4)
+@timed
 def renameImages(mn):
 
     # Walk over jp4 files in the __Output__ folder
@@ -124,6 +144,7 @@ def renameImages(mn):
         os.rename(fn, "%s/%s.jp4" % (__Output__, OutName))
 
 # Function to move all incomplete sequences to __Trash__ folder, a complete sequence need to be 1-9
+@timed
 def filterImages():
 
     # Walk over timestamps
@@ -146,8 +167,13 @@ def filterImages():
 
                 # Continue walking
                 continue
+@timed
+def subFileWrapper(sf):
+    with suppress_stdout_stderr():
+        sf.main()
 
 # Program entry point function
+@timed
 def main():
     
     # Globalize variables
@@ -155,7 +181,7 @@ def main():
 
     # Arguments check
     if len(sys.argv) < 4:
-        print "Usage: %s <Input folder> <Output folder> <Trash folder>" % sys.argv[0]
+        print "Usage: %s <Input folder> <Output folder> <Trash folder> [Debug 0/1]" % sys.argv[0]
         return
 
     # Remove last slash from paths
@@ -196,8 +222,7 @@ def main():
             subfile.loadParsers(categories=["images"], parser_ids=["jpeg"])
 
             # Run Hachoir
-            with suppress_stdout_stderr():
-                subfile.main()
+            subFileWrapper(subfile)
 
             print "Renaming images..."
 
