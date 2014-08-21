@@ -83,137 +83,137 @@ class suppress_stdout_stderr(object):
 # Function to retrive each timestamps into an array of strings
 def getTimeStamps():
 
-	# local variable
-	TimeStamps = []
+    # local variable
+    TimeStamps = []
 
-  	# Walk over jp4 files in the __Output__ folder
-	for i in glob.glob("%s/*.jp4" % __Output__):
+    # Walk over jp4 files in the __Output__ folder
+    for i in glob.glob("%s/*.jp4" % __Output__):
 
-		# Retrive just the filename
-		Fname = i.split('/')
-		Fname = Fname[len(Fname) - 1]
+        # Retrive just the filename
+        Fname = i.split('/')
+        Fname = Fname[len(Fname) - 1]
 
-    	# Extract timestamp from filename
-		TimeStamp = "%s_%s" % (Fname.split('_')[0], Fname.split('_')[1])
+        # Extract timestamp from filename
+        TimeStamp = "%s_%s" % (Fname.split('_')[0], Fname.split('_')[1])
 
-    	# Insert to list if timestamp are not present
-		if TimeStamp not in TimeStamps:
-			TimeStamps.append(TimeStamp)
+        # Insert to list if timestamp are not present
+        if TimeStamp not in TimeStamps:
+            TimeStamps.append(TimeStamp)
 
-  	# Return timestamp list
-	return sorted(TimeStamps)
+    # Return timestamp list
+    return sorted(TimeStamps)
 
 # Function to rename all images generated images by hachoir to a correct format (UnixTimeSTamp_SubSecTime_Module.jp4)
 def renameImages(mn):
 
-  	# Walk over jp4 files in the __Output__ folder
-	for fn in glob.glob("%s/%s" % (__Output__, "file-*.jpg")):
+    # Walk over jp4 files in the __Output__ folder
+    for fn in glob.glob("%s/%s" % (__Output__, "file-*.jpg")):
 
-    	# Read EXIF data from image
-		f = open(fn, 'rb')
-		tags = exifread.process_file(f)
-		f.close()
+        # Read EXIF data from image
+        f = open(fn, 'rb')
+        tags = exifread.process_file(f)
+        f.close()
 
-    	# Read date from EXIF data as date object
-		date_object = datetime.strptime(str(tags["Image DateTime"]), '%Y:%m:%d %H:%M:%S')
+        # Read date from EXIF data as date object
+        date_object = datetime.strptime(str(tags["Image DateTime"]), '%Y:%m:%d %H:%M:%S')
 
-    	# Create destination file name
-		OutName = "%s_%s_%s" % (date_object.strftime("%s"), tags["EXIF SubSecTimeOriginal"], mn)
+        # Create destination file name
+        OutName = "%s_%s_%s" % (date_object.strftime("%s"), tags["EXIF SubSecTimeOriginal"], mn)
 
-   		# Rename the file
-		os.rename(fn, "%s/%s.jp4" % (__Output__, OutName))
+        # Rename the file
+        os.rename(fn, "%s/%s.jp4" % (__Output__, OutName))
 
 # Function to move all incomplete sequences to __Trash__ folder, a complete sequence need to be 1-9
 def filterImages():
 
-  	# Walk overtimestamps
-	for ts in getTimeStamps():
+    # Walk overtimestamps
+    for ts in getTimeStamps():
 
-    	# Walk over module range 1-9
-		for i in range(1, 10):
+        # Walk over module range 1-9
+        for i in range(1, 10):
 
-      		# Calculate filename fro comparaison
-			FileName = "%s/%s_%s.jp4" % (__Output__, ts, i)
+            # Calculate filename fro comparaison
+            FileName = "%s/%s_%s.jp4" % (__Output__, ts, i)
 
-      		# Check if file exists
-			if not(os.path.isfile(FileName)):
+            # Check if file exists
+            if not(os.path.isfile(FileName)):
 
-        		# Move file to __Trash__ folder
-				print "Incomplete timestamp %s" % ts
-				os.system("mv %s/%s* %s" % (__Output__, ts, __Trash__))
-				break
-			else:
+                # Move file to __Trash__ folder
+                print "Incomplete timestamp %s" % ts
+                os.system("mv %s/%s* %s" % (__Output__, ts, __Trash__))
+                break
+            else:
 
-        		# Continue walking
-				continue
+                # Continue walking
+                continue
 
 # Program entry point function
 def main():
-	
-  	# Globalize variables
-	global __Input__, __Output__, __Trash__
+    
+    # Globalize variables
+    global __Input__, __Output__, __Trash__
 
-  	# Arguments check
-	if len(sys.argv) < 4:
-		print "Usage: %s <Input folder> <Output folder> <Trash folder>" % sys.argv[0]
-		return
+    # Arguments check
+    if len(sys.argv) < 4:
+        print "Usage: %s <Input folder> <Output folder> <Trash folder>" % sys.argv[0]
+        return
 
-  	# Remove last slash from paths
-	__Input__ = sys.argv[1].rstrip('/')
-	__Output__ = sys.argv[2].rstrip('/')
-	__Trash__ = sys.argv[3].rstrip('/')
+    # Remove last slash from paths
+    __Input__ = sys.argv[1].rstrip('/')
+    __Output__ = sys.argv[2].rstrip('/')
+    __Trash__ = sys.argv[3].rstrip('/')
 
-  	# Get modules from inout folder
-	Modules = sorted(os.listdir(__Input__))
+    # Get modules from inout folder
+    Modules = sorted(os.listdir(__Input__))
 
-  	# Initialize module index indicator
-	Module_Index = 1
+    # Initialize module index indicator
+    Module_Index = 1
 
-	print "Extracting MOV files..."
+    print "Extracting MOV files..."
 
-  	# Walk over modules
-	for mn in Modules:
-		print "Processing module %d/%d..." % (Module_Index, len(Modules))
+    # Walk over modules
+    for mn in Modules:
+        print "Processing module %d/%d..." % (Module_Index, len(Modules))
 
-    	# Get list ov MOV files inside the module folder
-		MovList = glob.glob("%s/%s/*.mov" % (__Input__, mn))
-		Total_Files = len(MovList)
+        # Get list ov MOV files inside the module folder
+        MovList = glob.glob("%s/%s/*.mov" % (__Input__, mn))
+        Total_Files = len(MovList)
 
-    	# Initialize files index indicator
-		Processed_Files = 1
+        # Initialize files index indicator
+        Processed_Files = 1
 
-    	# Walk over file list
-		for fn in MovList:
-			print "Extracting (%d/%d): %s..." % (Processed_Files, Total_Files, fn)
+        # Walk over file list
+        for fn in MovList:
+            print "Extracting (%d/%d): %s..." % (Processed_Files, Total_Files, fn)
 
-      		# Read the MOV file
-			stream = FileInputStream(unicodeFilename(fn), real_filename=fn)
+            # Read the MOV file
+            stream = FileInputStream(unicodeFilename(fn), real_filename=fn)
 
-      		# Configure Hachoir
-			subfile = SearchSubfile(stream, 0, None)
-			subfile.verbose = False
-			subfile.setOutput(__Output__)
-			subfile.loadParsers(categories=["images"], parser_ids=["jpeg"])
+            # Configure Hachoir
+            subfile = SearchSubfile(stream, 0, None)
+            subfile.verbose = False
+            subfile.setOutput(__Output__)
+            subfile.loadParsers(categories=["images"], parser_ids=["jpeg"])
 
-      		# Run Hachoir
-			with suppress_stdout_stderr():
-				subfile.main()
+            # Run Hachoir
+            with suppress_stdout_stderr():
+                subfile.main()
 
-			print "Renaming images..."
+            print "Renaming images..."
 
-      		# Rename images
-			renameImages(mn)
+            # Rename images
+            renameImages(mn)
 
-      		# Increment files index indicator
-			Processed_Files+=1
+            # Increment files index indicator
+            Processed_Files+=1
 
-    	# Increment module index indicator
-		Module_Index+=1
+        # Increment module index indicator
+        Module_Index+=1
 
-	print "Filtering images..."
+    print "Filtering images..."
 
-  	# Filter images see filterImages()
-	filterImages()
+    # Filter images see filterImages()
+    filterImages()
 
 # Program entry point
 if __name__ == "__main__":
