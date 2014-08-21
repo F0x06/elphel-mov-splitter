@@ -77,6 +77,7 @@ def filterImages():
 			FileName = "%s/%s_%s.jp4" % (Output, ts, i)
 
 			if not(os.path.isfile(FileName)):
+				print "Incomplete timestamp %s" % ts
 				os.system("mv %s/%s* %s" % (Output, ts, Trash))
 				break
 			else:
@@ -107,7 +108,7 @@ def main():
 		Processed_Files = 1
 
 		for fn in MovList:
-			print "Extracting %s (%d/%d)..." % (fn, Processed_Files, Total_Files)
+			print "Extracting (%d/%d): %s..." % (Processed_Files, Total_Files, fn)
 			
 			stream = FileInputStream(unicodeFilename(fn), real_filename=fn)
 			
