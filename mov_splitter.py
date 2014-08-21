@@ -126,10 +126,10 @@ def renameImages(mn):
 # Function to move all incomplete sequences to __Trash__ folder, a complete sequence need to be 1-9
 def filterImages():
 
-    # Walk overtimestamps
+    # Walk over timestamps
     for ts in getTimeStamps():
 
-        # Walk over module range 1-9
+        # Walk over modules range 1-9
         for i in range(1, 10):
 
             # Calculate filename fro comparaison
@@ -207,7 +207,7 @@ def main():
             # Increment files index indicator
             Processed_Files+=1
 
-        # Increment module index indicator
+        # Increment modules index indicator
         Module_Index+=1
 
     print "Filtering images..."
