@@ -213,7 +213,10 @@ def main():
             print "Extracting (%d/%d): %s..." % (Processed_Files, Total_Files, fn)
 
             # Extract MOV file
-            extractMOV(fn, __Output__)
+            try:
+                extractMOV(fn, __Output__)
+            except Exception: 
+                pass
 
             # Increment files index indicator
             Processed_Files+=1
