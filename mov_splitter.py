@@ -151,7 +151,7 @@ def filterImages():
     for ts in getTimeStamps():
 
         # Walk over modules range 1-9
-        for i in range(1, 10):
+        for i in range(1, 9):
 
             # Calculate filename fro comparaison
             FileName = "%s/%s_%s.jp4" % (__Output__, ts, i)
