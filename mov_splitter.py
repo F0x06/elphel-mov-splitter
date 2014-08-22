@@ -40,7 +40,6 @@ import glob
 import os
 import re
 import exifread
-import shutil
 from datetime import datetime
 from functools import wraps
 from time import time
@@ -142,27 +141,6 @@ def getTimeStamps():
 
     # Return timestamp list
     return sorted(TimeStamps)
-
-# Function to rename all images generated images by hachoir to a correct format (UnixTimeSTamp_SubSecTime_Module.jp4)
-@timed
-def renameImages(mn):
-
-    # Walk over jp4 files in the __Output__ folder
-    for fn in glob.glob("%s/%s" % (__Output__, "file-*.jpg")):
-
-        # Read EXIF data from image
-        f = open(fn, 'rb')
-        tags = exifread.process_file(f)
-        f.close()
-
-        # Read date from EXIF data as date object
-        date_object = datetime.strptime(str(tags["Image DateTime"]), '%Y:%m:%d %H:%M:%S')
-
-        # Create destination file name
-        OutName = "%s_%s_%s" % (date_object.strftime("%s"), tags["EXIF SubSecTimeOriginal"], mn)
-
-        # Rename the file
-        os.rename(fn, "%s/%s.jp4" % (__Output__, OutName))
 
 # Function to move all incomplete sequences to __Trash__ folder, a complete sequence need to be 1-9
 @timed
