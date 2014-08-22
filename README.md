@@ -16,7 +16,7 @@
     sudo pip install exifread
 
 ### Usage
-    Usage: mov_splitter.py <Input folder> <Output folder> <Trash Folder>
+    Usage: mov_splitter.py <Input folder> <Output folder> <Trash Folder> [Debug 0/1]
 
 ### Example usage scenario
     ./mov_splitter.py /data/footage/run1/mov /data/footage/run1/0 /data/footage/run1/trash
