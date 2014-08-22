@@ -35,18 +35,16 @@
 #      Attribution" section of <http://foxel.ch/license>.
 
 import sys
+import signal
 import glob
 import os
+import re
 import exifread
 import shutil
 from datetime import datetime
 from functools import wraps
 from time import time
-
-
-from hachoir_subfile.search import SearchSubfile
-from hachoir_core.cmd_line import unicodeFilename
-from hachoir_core.stream import FileInputStream
+from cStringIO import StringIO
 
 # Global variables
 __Input__ = ""
@@ -57,6 +55,12 @@ Total_Files = 0
 Processed_Files = 0
 
 Modules = []
+
+# Function to catch CTRL-C
+def signal_handler(signal, frame):
+        print('Interrupted!')
+        sys.exit(0)
+signal.signal(signal.SIGINT, signal_handler)
 
 # Function to moditor execution time of functions
 def timed(f):
@@ -74,29 +78,46 @@ def timed(f):
         return result
     return wrapper
 
-# Function to disable __Output__ on function call
-class suppress_stdout_stderr(object):
+# Function to extract JPEG images inside a MOV file
+@timed
+def extractMOV(InputFile, OutputFolder):
 
-    def __init__(self):
-        # Open a pair of null files
-        self.null_fds =  [os.open(os.devnull,os.O_RDWR) for x in range(2)]
+    # JPEG file header
+    JPEGHeader = b'\xff\xd8\xff\xe1'
 
-        # Save the actual stdout (1) and stderr (2) file descriptors.
-        self.save_fds = (os.dup(1), os.dup(2))
+    # Open input MOV file
+    mov = open(InputFile, 'rb')
+    mov_data = mov.read()
+    mov.close()
 
-    def __enter__(self):
-        # Assign the null pointers to stdout and stderr.
-        os.dup2(self.null_fds[0],1)
-        os.dup2(self.null_fds[1],2)
+    # Search all JPEG files inside the MOV file
+    JPEG_Offsets = sorted([match.start() for match in re.finditer(JPEGHeader, mov_data)])
 
-    def __exit__(self, *_):
-        # Re-assign the real stdout/stderr back to (1) and (2)
-        os.dup2(self.save_fds[0],1)
-        os.dup2(self.save_fds[1],2)
+    # Walk over JPEG files positions
+    for _Index, _Offset in enumerate(JPEG_Offsets):
 
-        # Close the null files
-        os.close(self.null_fds[0])
-        os.close(self.null_fds[1])
+        # Calculate the filesize for extraction
+        if (_Index >= len(JPEG_Offsets) - 1):
+            Size = len(mov_data) - _Offset
+        else:
+            Size = (JPEG_Offsets[_Index+1] - _Offset)
+
+        # Extract JPEG from MOV file
+        ImageData = mov_data[_Offset:(Size + _Offset if Size is not None else None)]
+
+        # Extract EXIF data from JPEG file
+        ImageData_File = StringIO(ImageData)
+        EXIF_Tags = exifread.process_file(ImageData_File)
+        ImageData_File.close()
+
+        # Calculate the output filename
+        date_object = datetime.strptime(str(EXIF_Tags["Image DateTime"]), '%Y:%m:%d %H:%M:%S')
+        Output_Name = "%s_%s_%s" % (date_object.strftime("%s"), EXIF_Tags["EXIF SubSecTimeOriginal"], 1)
+
+        # Save the file
+        Output_Image = open('%s/%s.jp4' % (OutputFolder, Output_Name), 'wb')
+        Output_Image.write(ImageData)
+        Output_Image.close()
 
 # Function to retrive each timestamps into an array of strings
 @timed
@@ -167,10 +188,6 @@ def filterImages():
 
                 # Continue walking
                 continue
-@timed
-def subFileWrapper(sf):
-    with suppress_stdout_stderr():
-        sf.main()
 
 # Program entry point function
 @timed
@@ -212,22 +229,8 @@ def main():
         for fn in MovList:
             print "Extracting (%d/%d): %s..." % (Processed_Files, Total_Files, fn)
 
-            # Read the MOV file
-            stream = FileInputStream(unicodeFilename(fn), real_filename=fn)
-
-            # Configure Hachoir
-            subfile = SearchSubfile(stream, 0, None)
-            subfile.verbose = False
-            subfile.setOutput(__Output__)
-            subfile.loadParsers(categories=["images"], parser_ids=["jpeg"])
-
-            # Run Hachoir
-            subFileWrapper(subfile)
-
-            print "Renaming images..."
-
-            # Rename images
-            renameImages(mn)
+            # Extract MOV file
+            extractMOV(fn, __Output__)
 
             # Increment files index indicator
             Processed_Files+=1
