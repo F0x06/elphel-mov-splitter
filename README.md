@@ -1,18 +1,17 @@
-## elphel-mov-splitter<br />Elphel MOV to jp4 splitter using [hachoir](https://bitbucket.org/haypo/hachoir/).
+## elphel-mov-splitter<br />Elphel MOV to jp4 splitter.
 
->Elphel MOV to jp4 splitter using [hachoir](https://bitbucket.org/haypo/hachoir/).
+>Elphel MOV to jp4 splitter.
 
 ### Requirements
 
 #### Details
 
-1. [hachoir-subfile](https://bitbucket.org/haypo/hachoir/wiki/hachoir-subfile)
-2. [python-pip](https://pypi.python.org/pypi/pip)
-3. [exifread](https://pypi.python.org/pypi/ExifRead)
+1. [python-pip](https://pypi.python.org/pypi/pip)
+2. [exifread](https://pypi.python.org/pypi/ExifRead)
 
 #### Installation
 
-    sudo apt-get install hachoir-subfile python-pip
+    sudo apt-get install python-pip
     sudo pip install exifread
 
 ### Usage
