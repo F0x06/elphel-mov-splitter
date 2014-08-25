@@ -97,7 +97,7 @@ def find_all(a_str, sub):
 
 # Function to extract JPEG images inside a MOV file
 @timed
-def extractMOV(InputFile, OutputFolder, MuduleName):
+def extractMOV(InputFile, OutputFolder, ModuleName):
 
     # JPEG file header
     JPEGHeader = b'\xff\xd8\xff\xe1'
@@ -135,7 +135,7 @@ def extractMOV(InputFile, OutputFolder, MuduleName):
 
         # Calculate the output filename
         date_object = datetime.strptime(str(EXIF_Tags["Image DateTime"]), '%Y:%m:%d %H:%M:%S')
-        Output_Name = "%s_%s_%s" % (date_object.strftime("%s"), EXIF_Tags["EXIF SubSecTimeOriginal"], MuduleName)
+        Output_Name = "%s_%s_%s" % (date_object.strftime("%s"), EXIF_Tags["EXIF SubSecTimeOriginal"], ModuleName)
 
         # Save the file
         Output_Image = open('%s/%s.jp4' % (OutputFolder, Output_Name), 'wb')
