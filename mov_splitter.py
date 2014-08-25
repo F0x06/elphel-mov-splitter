@@ -3,38 +3,38 @@
 
 """
   elphel-mov-splitter - Elphel MOV to jp4 splitter
- 
+
   Copyright (c) 2014 FOXEL SA - http://foxel.ch
   Please read <http://foxel.ch/license> for more information.
- 
- 
+
+
   Author(s):
- 
+
        Kevin Velickovic <k.velickovic@foxel.ch>
- 
- 
+
+
   This file is part of the FOXEL project <http://foxel.ch>.
- 
+
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU Affero General Public License as published by
   the Free Software Foundation, either version 3 of the License, or
   (at your option) any later version.
- 
+
   This program is distributed in the hope that it will be useful,
   but WITHOUT ANY WARRANTY; without even the implied warranty of
   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
   GNU Affero General Public License for more details.
- 
+
   You should have received a copy of the GNU Affero General Public License
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
- 
- 
+
+
   Additional Terms:
- 
+
        You are required to preserve legal notices and author attributions in
        that material or in the Appropriate Legal Notices displayed by works
        containing it.
- 
+
        You are required to attribute the work as explained in the "Usage and
        Attribution" section of <http://foxel.ch/license>.
 """
@@ -43,7 +43,6 @@ import sys
 import signal
 import glob
 import os
-import re
 import exifread
 from datetime import datetime
 from functools import wraps
@@ -75,12 +74,26 @@ def timed(f):
 
         result = f(*args, **kwds)
 
-        if len(sys.argv) >= 5:
+        if len(sys.argv) >= 5 and int(sys.argv[4]) > 0:
             elapsed = time() - start
             print "%s took %ds to finish" % (f.__name__, elapsed)
-            
+
         return result
     return wrapper
+
+# Function to determine if quiet mode is enabled
+def quietEnabled():
+    return (len(sys.argv) >= 6 and int(sys.argv[5]) > 0)
+
+# Function to find all occurences of a given input
+@timed
+def find_all(a_str, sub):
+    start = 0
+    while True:
+        start = a_str.find(sub, start)
+        if start == -1: return
+        yield start
+        start += len(sub)
 
 # Function to extract JPEG images inside a MOV file
 @timed
@@ -95,10 +108,16 @@ def extractMOV(InputFile, OutputFolder):
     mov.close()
 
     # Search all JPEG files inside the MOV file
-    JPEG_Offsets = sorted([match.start() for match in re.finditer(JPEGHeader, mov_data)])
+    JPEG_Offsets = list(find_all(mov_data, JPEGHeader))
+    JPEG_Offsets_len = len(JPEG_Offsets)
 
     # Walk over JPEG files positions
     for _Index, _Offset in enumerate(JPEG_Offsets):
+
+        # Display progress
+        if not quietEnabled():
+            sys.stdout.write("Extracting %d/%d\r" % (_Index, JPEG_Offsets_len - 1))
+            sys.stdout.flush()
 
         # Calculate the filesize for extraction
         if (_Index >= len(JPEG_Offsets) - 1):
@@ -164,7 +183,8 @@ def filterImages():
             if not(os.path.isfile(FileName)):
 
                 # Move file to __Trash__ folder
-                print "Incomplete timestamp %s" % ts
+                if not quietEnabled():
+                    print "Incomplete timestamp %s" % ts
                 os.system("mv %s/%s* %s" % (__Output__, ts, __Trash__))
                 break
             else:
@@ -175,7 +195,7 @@ def filterImages():
 # Program entry point function
 @timed
 def main():
-    
+
     # Globalize variables
     global __Input__, __Output__, __Trash__
 
@@ -195,11 +215,13 @@ def main():
     # Initialize module index indicator
     Module_Index = 1
 
-    print "Extracting MOV files..."
+    if not quietEnabled():
+        print "Extracting MOV files..."
 
     # Walk over modules
     for mn in Modules:
-        print "Processing module %d/%d..." % (Module_Index, len(Modules))
+        if not quietEnabled():
+            print "Processing module %d/%d..." % (Module_Index, len(Modules))
 
         # Get list ov MOV files inside the module folder
         MovList = glob.glob("%s/%s/*.mov" % (__Input__, mn))
@@ -210,12 +232,13 @@ def main():
 
         # Walk over file list
         for fn in MovList:
-            print "Extracting (%d/%d): %s..." % (Processed_Files, Total_Files, fn)
+            if not quietEnabled():
+                print "Processing (%d/%d): %s..." % (Processed_Files, Total_Files, fn)
 
             # Extract MOV file
             try:
                 extractMOV(fn, __Output__)
-            except Exception: 
+            except Exception:
                 pass
 
             # Increment files index indicator
@@ -224,7 +247,8 @@ def main():
         # Increment modules index indicator
         Module_Index+=1
 
-    print "Filtering images..."
+    if not quietEnabled():
+        print "Filtering images..."
 
     # Filter images see filterImages()
     filterImages()
