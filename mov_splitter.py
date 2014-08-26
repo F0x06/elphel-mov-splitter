@@ -69,12 +69,19 @@ signal.signal(signal.SIGINT, signal_handler)
 def timed(f):
     @wraps(f)
     def wrapper(*args, **kwds):
-        if len(sys.argv) >= 5:
+
+        # Check if debug mode is enabled
+        _Enabled = len(sys.argv) >= 5 and int(sys.argv[4]) > 0
+
+        # Start timer initialization
+        if _Enabled:
             start = time()
 
+        # Call original function
         result = f(*args, **kwds)
 
-        if len(sys.argv) >= 5 and int(sys.argv[4]) > 0:
+        # Show final result
+        if _Enabled:
             elapsed = time() - start
             print "%s took %ds to finish" % (f.__name__, elapsed)
 
@@ -90,9 +97,16 @@ def quietEnabled():
 def find_all(a_str, sub):
     start = 0
     while True:
+        # Find first element
         start = a_str.find(sub, start)
+
+        # If no match found exit function
         if start == -1: return
+
+        # If there is a match return it and process the next element
         yield start
+
+        # Move pointer to next occurence
         start += len(sub)
 
 # Function to extract JPEG images inside a MOV file
