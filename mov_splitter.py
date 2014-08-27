@@ -219,24 +219,28 @@ def filterImages(Output, Trash):
     # Walk over timestamps
     for ts in getTimeStamps(Output):
 
+        # Missing modules array
+        Missing_Modules = []
+
         # Walk over modules range 1-9
         for i in range(1, 9):
 
-            # Calculate filename fro comparaison
+            # Calculate filename for comparaison
             FileName = "%s/%s_%s.jp4" % (Output, ts, i)
 
             # Check if file exists
             if not(os.path.isfile(FileName)):
 
-                # Move file to __Trash__ folder
-                if not quietEnabled():
-                    print "Incomplete timestamp %s" % ts
-                os.system("mv %s/%s* %s" % (Output, ts, Trash))
-                break
-            else:
+                # Append missing module to list
+                Missing_Modules.append(i)
 
-                # Continue walking
-                continue
+        if len(Missing_Modules) > 0:
+
+            # Move file to __Trash__ folder
+            os.system("mv %s/%s* %s" % (Output, ts, Trash))
+
+            if not quietEnabled():
+                print "Incomplete timestamp %s (Missing module(s) %s)" % (ts, str(Missing_Modules)[1:-1])
 
 # Function to convert a fractioned EXIF array into degrees
 def array2degrees(dms):
