@@ -73,7 +73,7 @@ KML_Entry = \
         <roll>%d</roll>
     </Camera>
     <Icon>
-        <href>%s%s</href>
+        <href>%s/%s</href>
     </Icon>
 </PhotoOverlay>
 """
