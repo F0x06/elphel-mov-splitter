@@ -144,6 +144,11 @@ def extractMOV(InputFile, OutputFolder, ModuleName):
     JPEGHeader = b'\xff\xd8\xff\xe1'
 
     # Open input MOV file
+    if not quietEnabled():
+        sys.stdout.flush()
+        sys.stdout.write("Loading MOV file...\r")
+        sys.stdout.flush()
+
     mov = open(InputFile, 'rb')
     mov_data = mov.read()
     mov.close()
