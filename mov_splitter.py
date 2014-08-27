@@ -39,30 +39,25 @@
        Attribution" section of <http://foxel.ch/license>.
 """
 
-import sys
-import signal
+import exifread
 import glob
 import os
-import exifread
+import signal
+import sys
+import traceback
+
+from cStringIO import StringIO
 from datetime import datetime
 from functools import wraps
 from time import time
-from cStringIO import StringIO
-
-# Global variables
-__Input__ = ""
-__Output__ = ""
-__Trash__ = ""
-
-Total_Files = 0
-Processed_Files = 0
-
-Modules = []
 
 # Function to catch CTRL-C
-def signal_handler(signal, frame):
-        print('Interrupted!')
-        sys.exit(0)
+def signal_handler(_signal, _frame):
+    del _signal
+    del _frame
+
+    print('\nInterrupted!')
+    sys.exit(0)
 signal.signal(signal.SIGINT, signal_handler)
 
 # Function to moditor execution time of functions
@@ -158,13 +153,13 @@ def extractMOV(InputFile, OutputFolder, ModuleName):
 
 # Function to retrive each timestamps into an array of strings
 @timed
-def getTimeStamps():
+def getTimeStamps(Output):
 
     # local variable
     TimeStamps = []
 
     # Walk over jp4 files in the __Output__ folder
-    for i in glob.glob("%s/*.jp4" % __Output__):
+    for i in glob.glob("%s/*.jp4" % Output):
 
         # Retrive just the filename
         Fname = i.split('/')
@@ -182,16 +177,16 @@ def getTimeStamps():
 
 # Function to move all incomplete sequences to __Trash__ folder, a complete sequence need to be 1-9
 @timed
-def filterImages():
+def filterImages(Output, Trash):
 
     # Walk over timestamps
-    for ts in getTimeStamps():
+    for ts in getTimeStamps(Output):
 
         # Walk over modules range 1-9
         for i in range(1, 9):
 
             # Calculate filename fro comparaison
-            FileName = "%s/%s_%s.jp4" % (__Output__, ts, i)
+            FileName = "%s/%s_%s.jp4" % (Output, ts, i)
 
             # Check if file exists
             if not(os.path.isfile(FileName)):
@@ -199,7 +194,7 @@ def filterImages():
                 # Move file to __Trash__ folder
                 if not quietEnabled():
                     print "Incomplete timestamp %s" % ts
-                os.system("mv %s/%s* %s" % (__Output__, ts, __Trash__))
+                os.system("mv %s/%s* %s" % (Output, ts, Trash))
                 break
             else:
 
@@ -209,9 +204,6 @@ def filterImages():
 # Program entry point function
 @timed
 def main():
-
-    # Globalize variables
-    global __Input__, __Output__, __Trash__
 
     # Arguments check
     if len(sys.argv) < 4:
@@ -223,8 +215,8 @@ def main():
     __Output__ = sys.argv[2].rstrip('/')
     __Trash__ = sys.argv[3].rstrip('/')
 
-    # Get modules from inout folder
-    Modules = sorted(os.listdir(__Input__))
+    # Get modules from input folder
+    CameraModules = sorted(os.listdir(__Input__))
 
     # Initialize module index indicator
     Module_Index = 1
@@ -233,9 +225,9 @@ def main():
         print "Extracting MOV files..."
 
     # Walk over modules
-    for mn in Modules:
+    for mn in CameraModules:
         if not quietEnabled():
-            print "Processing module %d/%d..." % (Module_Index, len(Modules))
+            print "Processing module %d/%d..." % (Module_Index, len(CameraModules))
 
         # Get list ov MOV files inside the module folder
         MovList = glob.glob("%s/%s/*.mov" % (__Input__, mn))
@@ -252,8 +244,8 @@ def main():
             # Extract MOV file
             try:
                 extractMOV(fn, __Output__, mn)
-            except Exception:
-                pass
+            except (IOError, MemoryError):
+                traceback.print_exc()
 
             # Increment files index indicator
             Processed_Files+=1
@@ -265,7 +257,7 @@ def main():
         print "Filtering images..."
 
     # Filter images see filterImages()
-    filterImages()
+    filterImages(__Output__, __Trash__)
 
 # Program entry point
 if __name__ == "__main__":
