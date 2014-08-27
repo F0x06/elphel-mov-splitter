@@ -39,10 +39,12 @@
        Attribution" section of <http://foxel.ch/license>.
 """
 
+# Imports
 import exifread
 import glob
 import os
 import signal
+import string
 import sys
 import traceback
 
@@ -50,6 +52,36 @@ from cStringIO import StringIO
 from datetime import datetime
 from functools import wraps
 from time import time
+
+# Global variables
+
+# KML file header
+KML_Header = \
+"""<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://earth.google.com/kml/2.2">
+<Document>"""
+
+# KML file entry
+KML_Entry = \
+"""<PhotoOverlay>
+    <Camera>
+        <longitude>%f</longitude>
+        <latitude>%f</latitude>
+        <altitude>%s</altitude>
+        <heading>%d</heading>
+        <tilt>%d</tilt>
+        <roll>%d</roll>
+    </Camera>
+    <Icon>
+        <href>%s%s</href>
+    </Icon>
+</PhotoOverlay>
+"""
+
+# KML file footer
+KML_Footer = \
+"""</Document>
+</kml>"""
 
 # Function to catch CTRL-C
 def signal_handler(_signal, _frame):
@@ -201,6 +233,99 @@ def filterImages(Output, Trash):
                 # Continue walking
                 continue
 
+# Function to convert a fractioned EXIF array into degrees
+def array2degrees(dms):
+
+    # Rounding factor
+    _round=1000000
+
+    # Splitting input values
+    d = string.split(str(dms.values[0]), '/')
+    m = string.split(str(dms.values[1]), '/')
+    s = string.split(str(dms.values[2]), '/')
+
+    # Variables padding
+    if len(d) == 1:
+        d.append(1)
+    if len(m) == 1:
+        m.append(1)
+    if len(s) == 1:
+        s.append(1)
+
+    # Compute degrees
+    rslt = float(d[0]) / float(d[1]) + (float(m[0]) / float(m[1])) / 60.0 + (float(s[0]) / float(s[1])) / 3600.0
+
+    # Return result
+    return round(_round*rslt)/_round
+
+# Function to convert a fractioned EXIF altidute into meters
+def parseAlt(alt):
+
+    # Rounding factor
+    _round=1000000
+
+    # Splitting input values
+    a = string.split(str(alt), '/')
+
+    # Variables padding
+    if len(a) == 1:
+        a.append(1)
+
+    # Compute altitude
+    rslt = float(a[0]) / float(a[1])
+
+    # Return result
+    return round(_round*rslt)/_round
+
+
+# Function to generate KML file
+def generateKML(Input):
+
+    # Open KML file for writing
+    KML_File = open("%s/../map_points.kml" % Input, "wb")
+
+    # Write header
+    KML_File.write(KML_Header)
+
+    # Walk over files
+    for f in sorted(glob.glob("%s/*_1.jp4" % Input)):
+
+        # Open image and extract EXIF data
+        Image = open(f, "rb")
+        EXIFData = exifread.process_file(Image)
+        Image.close()
+
+        # Compute GPS data
+        Longitude = (-1 if (EXIFData['GPS GPSLongitudeRef']=="W") else 1) * array2degrees(EXIFData['GPS GPSLongitude'])
+        Latitude = (-1 if (EXIFData['GPS GPSLatitudeRef']=="S") else 1) * array2degrees(EXIFData['GPS GPSLatitude'])
+        Altitude = (-1 if (EXIFData['GPS GPSAltitudeRef']=="S") else 1) * parseAlt(EXIFData['GPS GPSAltitude'])
+
+        Heading = 0
+        Tilt = 90
+        Roll = 0
+
+        if 'GPS GPSImgDirection' in EXIFData:
+
+            # Compute GPS data
+            Heading = parseAlt(EXIFData['GPS GPSImgDirection'])
+            Tilt = (-1 if (EXIFData['GPS GPSDestLatitudeRef'] =="S") else 1) * array2degrees(EXIFData['GPS GPSDestLatitude']) + 90.0
+
+            if (Tilt < 0):
+                Tilt = 0
+            elif (Tilt > 180):
+                Tilt = 180
+
+            Roll = (-1 if (EXIFData['GPS GPSDestLongitudeRef']=="W") else 1) * array2degrees(EXIFData['GPS GPSDestLongitude'])
+
+        # Write KML entry
+        KML_File.write(KML_Entry % (Longitude, Latitude, "{0:.1f}".format(Altitude), Heading, Tilt, Roll, "http://127.0.0.1/footage/RMLL_Village_du_Libre/0/", os.path.split(f)[1]))
+
+    # Write KML footer
+    KML_File.write(KML_Footer)
+
+    # Close KML file
+    KML_File.close()
+
 # Program entry point function
 @timed
 def main():
@@ -258,6 +383,12 @@ def main():
 
     # Filter images see filterImages()
     filterImages(__Output__, __Trash__)
+
+    if not quietEnabled():
+        print "Generating KML file..."
+
+    # Generate KML file
+    generateKML(__Output__)
 
 # Program entry point
 if __name__ == "__main__":
