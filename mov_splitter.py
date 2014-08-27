@@ -98,7 +98,7 @@ def timed(f):
     def wrapper(*args, **kwds):
 
         # Check if debug mode is enabled
-        _Enabled = len(sys.argv) >= 5 and int(sys.argv[4]) > 0
+        _Enabled = len(sys.argv) >= 6 and int(sys.argv[5]) > 0
 
         # Start timer initialization
         if _Enabled:
@@ -117,7 +117,7 @@ def timed(f):
 
 # Function to determine if quiet mode is enabled
 def quietEnabled():
-    return (len(sys.argv) >= 6 and int(sys.argv[5]) > 0)
+    return (len(sys.argv) >= 7 and int(sys.argv[6]) > 0)
 
 # Function to find all occurences of a given input
 @timed
@@ -279,7 +279,7 @@ def parseAlt(alt):
 
 
 # Function to generate KML file
-def generateKML(Input):
+def generateKML(Input, BaseURL):
 
     # Open KML file for writing
     KML_File = open("%s/../map_points.kml" % Input, "wb")
@@ -318,7 +318,7 @@ def generateKML(Input):
             Roll = (-1 if (EXIFData['GPS GPSDestLongitudeRef']=="W") else 1) * array2degrees(EXIFData['GPS GPSDestLongitude'])
 
         # Write KML entry
-        KML_File.write(KML_Entry % (Longitude, Latitude, "{0:.1f}".format(Altitude), Heading, Tilt, Roll, "http://127.0.0.1/footage/RMLL_Village_du_Libre/0/", os.path.split(f)[1]))
+        KML_File.write(KML_Entry % (Longitude, Latitude, "{0:.1f}".format(Altitude), Heading, Tilt, Roll, BaseURL, os.path.split(f)[1]))
 
     # Write KML footer
     KML_File.write(KML_Footer)
@@ -331,14 +331,15 @@ def generateKML(Input):
 def main():
 
     # Arguments check
-    if len(sys.argv) < 4:
-        print "Usage: %s <Input folder> <Output folder> <Trash folder> [Debug 0/1]" % sys.argv[0]
+    if len(sys.argv) < 5:
+        print "Usage: %s <Input folder> <Output folder> <Trash folder> <KML base URL> [Debug 0/1] [Quiet 0/1]" % sys.argv[0]
         return
 
     # Remove last slash from paths
     __Input__ = sys.argv[1].rstrip('/')
     __Output__ = sys.argv[2].rstrip('/')
     __Trash__ = sys.argv[3].rstrip('/')
+    __KMLBase__ = sys.argv[4].rstrip('/')
 
     # Get modules from input folder
     CameraModules = sorted(os.listdir(__Input__))
@@ -388,7 +389,7 @@ def main():
         print "Generating KML file..."
 
     # Generate KML file
-    generateKML(__Output__)
+    generateKML(__Output__, __KMLBase__)
 
 # Program entry point
 if __name__ == "__main__":
