@@ -356,7 +356,7 @@ def main():
             print "Processing module %d/%d..." % (Module_Index, len(CameraModules))
 
         # Get list ov MOV files inside the module folder
-        MovList = glob.glob("%s/%s/*.mov" % (__Input__, mn))
+        MovList = sorted(glob.glob("%s/%s/*.mov" % (__Input__, mn)))
         Total_Files = len(MovList)
 
         # Initialize files index indicator
