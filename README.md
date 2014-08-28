@@ -5,6 +5,16 @@
 ### Description
 This tool split all MOV files created by the Elphel Eyesis 4π camera into JP4 files, and also generates a KML file
 
+### Table of Contents
+- [Elphel MOV to jp4 splitter.](#user-content-elphel-mov-splitterelphel-mov-to-jp4-splitter)
+    - [Dependencies](#user-content-dependencies)
+        - [Details](#user-content-details)
+        - [Installation](#user-content-installation)
+    - [Usage](#user-content-usage)
+    - [Example usage scenario](#user-content-example-usage-scenario)
+    - [Copyright](#user-content-copyright)
+    - [License](#user-content-license)
+
 ### Dependencies
 
 #### Details
