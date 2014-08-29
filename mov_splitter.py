@@ -40,18 +40,18 @@
 """
 
 # Imports
-import exifread
 import glob
 import os
 import signal
 import string
 import sys
 import traceback
-
 from cStringIO import StringIO
 from datetime import datetime
 from functools import wraps
 from time import time
+
+import exifread
 
 # Global variables
 
@@ -83,12 +83,36 @@ KML_Footer = \
 """</Document>
 </kml>"""
 
+# Function to print debug messages
+def ShowMessage(Message, Type=0, Halt=0):
+
+    # Flush stdout
+    sys.stdout.flush()
+
+    # Get current date
+    DateNow = datetime.now().strftime("%H:%M:%S")
+
+    # Display proper message
+    if Type == 0:
+        sys.stdout.write("%s \033[32m[INFO]\033[39m %s\n" % (DateNow, Message))
+    elif Type == 1:
+        sys.stdout.write("%s \033[33m[WARNING]\033[39m %s\n" % (DateNow, Message))
+    elif Type == 2:
+        sys.stdout.write("%s \033[31m[ERROR]\033[39m %s\n" % (DateNow, Message))
+
+    # Flush stdout
+    sys.stdout.flush()
+
+    # Halt program if requested
+    if Halt:
+        sys.exit()
+
 # Function to catch CTRL-C
 def signal_handler(_signal, _frame):
     del _signal
     del _frame
 
-    print('\nInterrupted!')
+    ShowMessage("Interrupted!", 2, 1)
     sys.exit(0)
 signal.signal(signal.SIGINT, signal_handler)
 
@@ -154,8 +178,12 @@ def extractMOV(InputFile, OutputFolder, ModuleName):
     mov.close()
 
     # Search all JPEG files inside the MOV file
-    JPEG_Offsets = list(find_all(mov_data, JPEGHeader))
+    JPEG_Offsets     = list(find_all(mov_data, JPEGHeader))
     JPEG_Offsets_len = len(JPEG_Offsets)
+
+    # Display message when no headers are found inside the MOV file
+    if JPEG_Offsets_len == 0:
+        ShowMessage("No JPEG headers found in MOV file %s" % InputFile, 1)
 
     # Walk over JPEG files positions
     for _Index, _Offset in enumerate(JPEG_Offsets):
@@ -178,6 +206,10 @@ def extractMOV(InputFile, OutputFolder, ModuleName):
         ImageData_File = StringIO(ImageData)
         EXIF_Tags = exifread.process_file(ImageData_File)
         ImageData_File.close()
+
+        # Error handling
+        if len(EXIF_Tags) == 0:
+            ShowMessage("Failed to read EXIF data", 1)
 
         # Calculate the output filename
         date_object = datetime.strptime(str(EXIF_Tags["Image DateTime"]), '%Y:%m:%d %H:%M:%S')
@@ -240,7 +272,7 @@ def filterImages(Output, Trash):
             os.system("mv %s/%s* %s" % (Output, ts, Trash))
 
             if not quietEnabled():
-                print "Incomplete timestamp %s (Missing module(s) %s)" % (ts, str(Missing_Modules)[1:-1])
+                ShowMessage("Incomplete timestamp %s (Missing module(s) %s)" % (ts, str(Missing_Modules)[1:-1]), 1)
 
 # Function to convert a fractioned EXIF array into degrees
 def array2degrees(dms):
@@ -305,26 +337,26 @@ def generateKML(Input, BaseURL):
         Image.close()
 
         # Compute GPS data
-        Longitude = (-1 if (EXIFData['GPS GPSLongitudeRef']=="W") else 1) * array2degrees(EXIFData['GPS GPSLongitude'])
-        Latitude = (-1 if (EXIFData['GPS GPSLatitudeRef']=="S") else 1) * array2degrees(EXIFData['GPS GPSLatitude'])
-        Altitude = (-1 if (EXIFData['GPS GPSAltitudeRef']=="S") else 1) * parseAlt(EXIFData['GPS GPSAltitude'])
+        Longitude = (-1 if (EXIFData['GPS GPSLongitudeRef'] == "W") else 1) * array2degrees(EXIFData['GPS GPSLongitude'])
+        Latitude  = (-1 if (EXIFData['GPS GPSLatitudeRef'] == "S") else 1) * array2degrees(EXIFData['GPS GPSLatitude'])
+        Altitude  = (-1 if (EXIFData['GPS GPSAltitudeRef'] == "S") else 1) * parseAlt(EXIFData['GPS GPSAltitude'])
 
         Heading = 0
-        Tilt = 90
-        Roll = 0
+        Tilt    = 90
+        Roll    = 0
 
         if 'GPS GPSImgDirection' in EXIFData:
 
             # Compute GPS data
             Heading = parseAlt(EXIFData['GPS GPSImgDirection'])
-            Tilt = (-1 if (EXIFData['GPS GPSDestLatitudeRef'] =="S") else 1) * array2degrees(EXIFData['GPS GPSDestLatitude']) + 90.0
+            Tilt    = (-1 if (EXIFData['GPS GPSDestLatitudeRef'] == "S") else 1) * array2degrees(EXIFData['GPS GPSDestLatitude']) + 90.0
 
             if (Tilt < 0):
                 Tilt = 0
             elif (Tilt > 180):
                 Tilt = 180
 
-            Roll = (-1 if (EXIFData['GPS GPSDestLongitudeRef']=="W") else 1) * array2degrees(EXIFData['GPS GPSDestLongitude'])
+            Roll = (-1 if (EXIFData['GPS GPSDestLongitudeRef'] == "W") else 1) * array2degrees(EXIFData['GPS GPSDestLongitude'])
 
         # Write KML entry
         KML_File.write(KML_Entry % (Longitude, Latitude, "{0:.1f}".format(Altitude), Heading, Tilt, Roll, BaseURL, os.path.split(f)[1]))
@@ -345,28 +377,35 @@ def main():
         return
 
     # Remove last slash from paths
-    __Input__ = sys.argv[1].rstrip('/')
-    __Output__ = sys.argv[2].rstrip('/')
-    __Trash__ = sys.argv[3].rstrip('/')
+    __Input__   = sys.argv[1].rstrip('/')
+    __Output__  = sys.argv[2].rstrip('/')
+    __Trash__   = sys.argv[3].rstrip('/')
     __KMLBase__ = sys.argv[4].rstrip('/')
 
     # Get modules from input folder
     CameraModules = sorted(os.listdir(__Input__))
 
+    if len(CameraModules) == 0:
+        ShowMessage("No camera modules found in %s" % __Input__, 2, 1)
+
     # Initialize module index indicator
     Module_Index = 1
 
     if not quietEnabled():
-        print "Extracting MOV files..."
+        ShowMessage("Extracting MOV files...")
 
     # Walk over modules
     for mn in CameraModules:
         if not quietEnabled():
-            print "Processing module %d/%d..." % (Module_Index, len(CameraModules))
+            ShowMessage("Processing module %d/%d..." % (Module_Index, len(CameraModules)))
 
         # Get list ov MOV files inside the module folder
         MovList = sorted(glob.glob("%s/%s/*.mov" % (__Input__, mn)))
         Total_Files = len(MovList)
+
+        # Error handling
+        if Total_Files == 0:
+            ShowMessage("No MOV files in camera module %s" % mn, 2)
 
         # Initialize files index indicator
         Processed_Files = 1
@@ -374,12 +413,13 @@ def main():
         # Walk over file list
         for fn in MovList:
             if not quietEnabled():
-                print "Processing (%d/%d): %s..." % (Processed_Files, Total_Files, fn)
+                ShowMessage("Processing (%d/%d): %s..." % (Processed_Files, Total_Files, fn))
 
-            # Extract MOV file
+            # Extract MOV file and catch exceptions
             try:
                 extractMOV(fn, __Output__, mn)
             except (IOError, MemoryError):
+                ShowMessage("MOV extraction error", 2)
                 traceback.print_exc()
 
             # Increment files index indicator
@@ -388,14 +428,16 @@ def main():
         # Increment modules index indicator
         Module_Index+=1
 
+    # Debug output
     if not quietEnabled():
-        print "Filtering images..."
+        ShowMessage("Filtering images...")
 
     # Filter images see filterImages()
     filterImages(__Output__, __Trash__)
 
+    # Debug output
     if not quietEnabled():
-        print "Generating KML file..."
+        ShowMessage("Generating KML file...")
 
     # Generate KML file
     generateKML(__Output__, __KMLBase__)
