@@ -378,6 +378,8 @@ def generateKML(Input, BaseURL):
 # Usage display function
 def _usage():
     print """
+    Usage: %s [OPTIONS]
+
     -h --help           Prints this
     -i --input          Input MOV folder
     -o --output         Output JP4 folder
@@ -386,7 +388,7 @@ def _usage():
 
     -d --debug          Debug mode
     -q --quiet          Quiet mode (Silent)
-    """
+    """ % sys.argv[0]
 
 # Program entry point function
 # pylint: disable=W0603
