@@ -151,14 +151,14 @@ def timed(f):
 
         # Start timer initialization
         if DEBUG_MODE:
-            start = time()
+            start = time.time()
 
         # Call original function
         result = f(*args, **kwds)
 
         # Show final result
         if DEBUG_MODE:
-            elapsed = time() - start
+            elapsed = time.time() - start
             print "%s took %ds to finish" % (f.__name__, elapsed)
 
         return result
