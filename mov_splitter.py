@@ -88,6 +88,12 @@ KML_Footer = \
 DEBUG_MODE = 0
 QUIET_MODE = 0
 
+# MOV file container class
+class MovFile:
+    def __init__(self, path, modulename):
+        self.path = path
+        self.module = int(modulename)
+
 # Function to print debug messages
 def ShowMessage(Message, Type=0, Halt=0):
 
@@ -393,6 +399,13 @@ def main(argv):
     __Trash__ = ""
     __KMLBase__ = ""
 
+    # Scope variables initialisation
+    __MOV_List__ = []
+    __MOV_List_Optimized__ = []
+    __Total_Files__ = 0
+    __Processed_Files__ = 1
+
+    # Arguments parser
     try:
         opt, args = getopt.getopt(argv, "hi:o:t:k:dq", ["help", "input=", "output=", "trash=", "kmlbase=", "debug", "quiet"])
         args = args
@@ -429,48 +442,50 @@ def main(argv):
     # Get modules from input folder
     CameraModules = sorted(os.listdir(__Input__))
 
+    # Error handling
     if len(CameraModules) == 0:
         ShowMessage("No camera modules found in %s" % __Input__, 2, 1)
 
-    # Initialize module index indicator
-    Module_Index = 1
+    # Insert all MOV files into a temporary array
+    for mn in CameraModules:
+        Movs = []
+        for MOV in sorted(glob.glob("%s/%s/*.mov" % (__Input__, mn))):
+            Movs.append( MovFile(MOV, mn) )
+            __Total_Files__ += 1
+        __MOV_List__.append(Movs)
 
+    # Sort MOV files
+    while len(__MOV_List__) > 0:
+        for MovArray in __MOV_List__:
+            for MOV in MovArray:
+                __MOV_List_Optimized__.append(MOV)
+                MovArray.pop(0)
+                break
+        if len(__MOV_List__[0]) <= 0:
+            __MOV_List__.pop(0)
+
+    # Debug output
     if not quietEnabled():
         ShowMessage("Extracting MOV files...")
 
-    # Walk over modules
-    for mn in CameraModules:
+    # Error handling
+    if __Total_Files__ == 0:
+        ShowMessage("No MOV files", 2)
+
+    # Walk over file list
+    for MOV in __MOV_List_Optimized__:
         if not quietEnabled():
-            ShowMessage("Processing module %d/%d..." % (Module_Index, len(CameraModules)))
+            ShowMessage("Processing (%d/%d): %s..." % (__Processed_Files__, __Total_Files__, MOV.path))
 
-        # Get list ov MOV files inside the module folder
-        MovList = sorted(glob.glob("%s/%s/*.mov" % (__Input__, mn)))
-        Total_Files = len(MovList)
+        # Extract MOV file and catch exceptions
+        try:
+            extractMOV(MOV.path, __Output__, MOV.module)
+        except (IOError, MemoryError):
+            ShowMessage("MOV extraction error", 2)
+            traceback.print_exc()
 
-        # Error handling
-        if Total_Files == 0:
-            ShowMessage("No MOV files in camera module %s" % mn, 2)
-
-        # Initialize files index indicator
-        Processed_Files = 1
-
-        # Walk over file list
-        for fn in MovList:
-            if not quietEnabled():
-                ShowMessage("Processing (%d/%d): %s..." % (Processed_Files, Total_Files, fn))
-
-            # Extract MOV file and catch exceptions
-            try:
-                extractMOV(fn, __Output__, mn)
-            except (IOError, MemoryError):
-                ShowMessage("MOV extraction error", 2)
-                traceback.print_exc()
-
-            # Increment files index indicator
-            Processed_Files+=1
-
-        # Increment modules index indicator
-        Module_Index+=1
+        # Increment files index indicator
+        __Processed_Files__+=1
 
     # Debug output
     if not quietEnabled():
