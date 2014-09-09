@@ -40,17 +40,18 @@
 """
 
 # Imports
+import datetime
 import getopt
 import glob
 import os
 import signal
 import string
 import sys
+import time
 import traceback
 from cStringIO import StringIO
 from datetime import datetime
 from functools import wraps
-from time import time
 
 import exifread
 
@@ -168,6 +169,16 @@ def find_all(a_str, sub):
         # Move pointer to next occurence
         start += len(sub)
 
+# Function to convert given time to UTC
+def Local2UTC(LocalTime):
+
+    # Convert time to UTC
+    EpochSecond = time.mktime(LocalTime.timetuple())
+    utcTime = datetime.utcfromtimestamp(EpochSecond)
+
+    # Return the result
+    return utcTime
+
 # Function to extract JPEG images inside a MOV file
 @timed
 def extractMOV(InputFile, OutputFolder, ModuleName):
@@ -220,7 +231,7 @@ def extractMOV(InputFile, OutputFolder, ModuleName):
             ShowMessage("Failed to read EXIF data", 1)
 
         # Calculate the output filename
-        date_object = datetime.strptime(str(EXIF_Tags["Image DateTime"]), '%Y:%m:%d %H:%M:%S')
+        date_object = Local2UTC( datetime.strptime(str(EXIF_Tags["Image DateTime"]), '%Y:%m:%d %H:%M:%S') )
         Output_Name = "%s_%s_%s" % (date_object.strftime("%s"), EXIF_Tags["EXIF SubSecTimeOriginal"], ModuleName)
 
         # Save the file
