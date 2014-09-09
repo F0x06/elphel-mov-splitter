@@ -87,7 +87,9 @@ KML_Footer = \
 
 # Config variables
 DEBUG_MODE = 0
+NO_COLORS = 0
 QUIET_MODE = 0
+LOG_FILE = ""
 
 # MOV file container class
 class MovFile:
@@ -104,13 +106,27 @@ def ShowMessage(Message, Type=0, Halt=0):
     # Get current date
     DateNow = datetime.now().strftime("%H:%M:%S")
 
+    # Write to log file
+    if len(LOG_FILE) > 0:
+        with open(LOG_FILE, "a+") as logFile:
+            logFile.write("%s [INFO] %s\n" % (DateNow, Message))
+
     # Display proper message
     if Type == 0:
-        sys.stdout.write("%s \033[32m[INFO]\033[39m %s\n" % (DateNow, Message))
+        if NO_COLORS:
+            sys.stdout.write("%s [INFO] %s\n" % (DateNow, Message))
+        else:
+            sys.stdout.write("%s \033[32m[INFO]\033[39m %s\n" % (DateNow, Message))
     elif Type == 1:
-        sys.stdout.write("%s \033[33m[WARNING]\033[39m %s\n" % (DateNow, Message))
+        if NO_COLORS:
+            sys.stdout.write("%s [WARNING] %s\n" % (DateNow, Message))
+        else:
+            sys.stdout.write("%s \033[33m[WARNING]\033[39m %s\n" % (DateNow, Message))
     elif Type == 2:
-        sys.stdout.write("%s \033[31m[ERROR]\033[39m %s\n" % (DateNow, Message))
+        if NO_COLORS:
+            sys.stdout.write("%s [ERROR] %s\n" % (DateNow, Message))
+        else:
+            sys.stdout.write("%s \033[31m[ERROR]\033[39m %s\n" % (DateNow, Message))
 
     # Flush stdout
     sys.stdout.flush()
@@ -399,6 +415,10 @@ def _usage():
 
     -d --debug          Debug mode
     -q --quiet          Quiet mode (Silent)
+
+    -l --logfile        Log file path
+    -n --nocolors       Disable stdout colors
+
     """ % sys.argv[0]
 
 # Program entry point function
@@ -420,7 +440,7 @@ def main(argv):
 
     # Arguments parser
     try:
-        opt, args = getopt.getopt(argv, "hi:o:t:k:dq", ["help", "input=", "output=", "trash=", "kmlbase=", "debug", "quiet"])
+        opt, args = getopt.getopt(argv, "hi:o:t:k:dql:n", ["help", "input=", "output=", "trash=", "kmlbase=", "debug", "quiet", "logfile=", "nocolors"])
         args = args
     except getopt.GetoptError, err:
         print str(err)
@@ -431,19 +451,25 @@ def main(argv):
             _usage()
             sys.exit()
         elif o in ("-i", "--input"):
-            __Input__   = a.rstrip('/')
+            __Input__  = a.rstrip('/')
         elif o in ("-o", "--output"):
-            __Output__   = a.rstrip('/')
+            __Output__  = a.rstrip('/')
         elif o in ("-t", "--trash"):
-            __Trash__   = a.rstrip('/')
+            __Trash__  = a.rstrip('/')
         elif o in ("-k", "--kmlbase"):
-            __KMLBase__   = a.rstrip('/')
+            __KMLBase__  = a.rstrip('/')
         elif o in ("-d", "--debug"):
             global DEBUG_MODE
             DEBUG_MODE = 1
         elif o in ("-q", "--quiet"):
             global QUIET_MODE
             QUIET_MODE = 1
+        elif o in ("-l", "--logfile"):
+            global LOG_FILE
+            LOG_FILE  = a
+        elif o in ("-n", "--nocolors"):
+            global NO_COLORS
+            NO_COLORS  = 1
         else:
             assert False, "unhandled option"
 
