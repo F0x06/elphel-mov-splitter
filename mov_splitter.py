@@ -40,6 +40,7 @@
 """
 
 # Imports
+import getopt
 import glob
 import os
 import signal
@@ -83,6 +84,10 @@ KML_Footer = \
 """</Document>
 </kml>"""
 
+# Config variables
+DEBUG_MODE = 0
+QUIET_MODE = 0
+
 # Function to print debug messages
 def ShowMessage(Message, Type=0, Halt=0):
 
@@ -121,18 +126,15 @@ def timed(f):
     @wraps(f)
     def wrapper(*args, **kwds):
 
-        # Check if debug mode is enabled
-        _Enabled = len(sys.argv) >= 6 and int(sys.argv[5]) > 0
-
         # Start timer initialization
-        if _Enabled:
+        if DEBUG_MODE:
             start = time()
 
         # Call original function
         result = f(*args, **kwds)
 
         # Show final result
-        if _Enabled:
+        if DEBUG_MODE:
             elapsed = time() - start
             print "%s took %ds to finish" % (f.__name__, elapsed)
 
@@ -141,7 +143,7 @@ def timed(f):
 
 # Function to determine if quiet mode is enabled
 def quietEnabled():
-    return (len(sys.argv) >= 7 and int(sys.argv[6]) > 0)
+    return QUIET_MODE
 
 # Function to find all occurences of a given input
 @timed
@@ -367,20 +369,62 @@ def generateKML(Input, BaseURL):
     # Close KML file
     KML_File.close()
 
+# Usage display function
+def _usage():
+    print """
+    -h --help           Prints this
+    -i --input          Input MOV folder
+    -o --output         Output JP4 folder
+    -t --trash          JP4 trash folder
+    -k --kmlbase        KML file base url
+
+    -d --debug          Debug mode
+    -q --quiet          Quiet mode (Silent)
+    """
+
 # Program entry point function
+# pylint: disable=W0603
 @timed
-def main():
+def main(argv):
+
+    # Arguments variables initialisation
+    __Input__ = ""
+    __Output__ = ""
+    __Trash__ = ""
+    __KMLBase__ = ""
+
+    try:
+        opt, args = getopt.getopt(argv, "hi:o:t:k:dq", ["help", "input=", "output=", "trash=", "kmlbase=", "debug", "quiet"])
+        args = args
+    except getopt.GetoptError, err:
+        print str(err)
+        _usage()
+        sys.exit(2)
+    for o, a in opt:
+        if o in ("-h", "--help"):
+            _usage()
+            sys.exit()
+        elif o in ("-i", "--input"):
+            __Input__   = a.rstrip('/')
+        elif o in ("-o", "--output"):
+            __Output__   = a.rstrip('/')
+        elif o in ("-t", "--trash"):
+            __Trash__   = a.rstrip('/')
+        elif o in ("-k", "--kmlbase"):
+            __KMLBase__   = a.rstrip('/')
+        elif o in ("-d", "--debug"):
+            global DEBUG_MODE
+            DEBUG_MODE = 1
+        elif o in ("-q", "--quiet"):
+            global QUIET_MODE
+            QUIET_MODE = 1
+        else:
+            assert False, "unhandled option"
 
     # Arguments check
-    if len(sys.argv) < 5:
-        print "Usage: %s <Input folder> <Output folder> <Trash folder> <KML base URL> [Debug 0/1] [Quiet 0/1]" % sys.argv[0]
+    if len(argv) < 5:
+        _usage()
         return
-
-    # Remove last slash from paths
-    __Input__   = sys.argv[1].rstrip('/')
-    __Output__  = sys.argv[2].rstrip('/')
-    __Trash__   = sys.argv[3].rstrip('/')
-    __KMLBase__ = sys.argv[4].rstrip('/')
 
     # Get modules from input folder
     CameraModules = sorted(os.listdir(__Input__))
@@ -442,6 +486,9 @@ def main():
     # Generate KML file
     generateKML(__Output__, __KMLBase__)
 
+    # Debug output
+    ShowMessage("Done")
+
 # Program entry point
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])
