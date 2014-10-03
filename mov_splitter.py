@@ -90,6 +90,7 @@ DEBUG_MODE = 0
 NO_COLORS = 0
 QUIET_MODE = 0
 LOG_FILE = ""
+FAIL_COUNTER = 0
 
 # MOV file container class
 class MovFile:
@@ -197,7 +198,8 @@ def Local2UTC(LocalTime):
 
 # Function to extract JPEG images inside a MOV file
 @timed
-def extractMOV(InputFile, OutputFolder, ModuleName):
+def extractMOV(InputFile, OutputFolder, TrashFolder, ModuleName):
+    global FAIL_COUNTER
 
     # JPEG file header
     JPEGHeader = b'\xff\xd8\xff\xe1'
@@ -242,16 +244,37 @@ def extractMOV(InputFile, OutputFolder, ModuleName):
         EXIF_Tags = exifread.process_file(ImageData_File)
         ImageData_File.close()
 
+        # Output file variables
+        Output_Name = ""
+        Output_Image = None
+
         # Error handling
         if len(EXIF_Tags) == 0:
+
+            # Print error
             ShowMessage("Failed to read EXIF data", 1)
 
-        # Calculate the output filename
-        date_object = Local2UTC( datetime.strptime(str(EXIF_Tags["Image DateTime"]), '%Y:%m:%d %H:%M:%S') )
-        Output_Name = "%s_%s_%s" % (date_object.strftime("%s"), EXIF_Tags["EXIF SubSecTimeOriginal"], ModuleName)
+            # Calculate filename
+            Output_Name = "fail_%d_exif" % (FAIL_COUNTER)
 
-        # Save the file
-        Output_Image = open('%s/%s.jp4' % (OutputFolder, Output_Name), 'wb')
+            # Open output file
+            Output_Image = open('%s/%s.jp4' % (TrashFolder, Output_Name), 'wb')
+
+            # Print error
+            ShowMessage("Saving image to %s/%s.jp4" % (TrashFolder, Output_Name), 1)
+
+            # Increment fail counter
+            FAIL_COUNTER += 1
+        else:
+
+            # Calculate the output filename
+            date_object = Local2UTC( datetime.strptime(str(EXIF_Tags["Image DateTime"]), '%Y:%m:%d %H:%M:%S') )
+            Output_Name = "%s_%s_%s" % (date_object.strftime("%s"), EXIF_Tags["EXIF SubSecTimeOriginal"], ModuleName)
+
+            # Open output file
+            Output_Image = open('%s/%s.jp4' % (OutputFolder, Output_Name), 'wb')
+
+        # write the file
         Output_Image.write(ImageData)
         Output_Image.close()
 
@@ -477,7 +500,7 @@ def main(argv):
     if len(argv) < 5:
         _usage()
         return
-    
+
     # Create default directories
     if not os.path.isdir(__Output__):
     	os.makedirs(__Output__)
@@ -525,7 +548,7 @@ def main(argv):
 
         # Extract MOV file and catch exceptions
         try:
-            extractMOV(MOV.path, __Output__, MOV.module)
+            extractMOV(MOV.path, __Output__, __Trash__, MOV.module)
         except (IOError, MemoryError):
             ShowMessage("MOV extraction error", 2)
             traceback.print_exc()
