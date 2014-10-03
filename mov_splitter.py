@@ -477,6 +477,13 @@ def main(argv):
     if len(argv) < 5:
         _usage()
         return
+    
+    # Create default directories
+    if not os.path.isdir(__Output__):
+    	os.makedirs(__Output__)
+
+    if not os.path.isdir(__Trash__):
+        os.makedirs(__Trash__)
 
     # Get modules from input folder
     CameraModules = sorted(os.listdir(__Input__))
