@@ -461,16 +461,17 @@ def _usage():
     print """
     Usage: %s [OPTIONS]
 
-    -h --help           Prints this
+    [Required arguments]
     -i --input          Input MOV folder
     -o --output         Output JP4 folder
     -t --trash          JP4 trash folder
-    -k --kmlbase        KML file base url
-    -s --state          State file to save/resume job
 
+    [Optional arguments]
+    -h --help           Prints this
+    -k --kmlbase        KML base url
+    -s --state          State file to save/resume job
     -d --debug          Debug mode
     -q --quiet          Quiet mode (Silent)
-
     -l --logfile        Log file path
     -n --nocolors       Disable stdout colors
 
