@@ -87,9 +87,10 @@ KML_Footer = \
 
 # Config variables
 DEBUG_MODE = 0
-NO_COLORS = 0
+NO_COLORS  = 0
+NO_FILTER  = 0
 QUIET_MODE = 0
-LOG_FILE = ""
+LOG_FILE   = ""
 
 # MOV file container class
 class MovFile:
@@ -468,11 +469,14 @@ def _usage():
 
     [Optional arguments]
     -h --help           Prints this
+
     -k --kmlbase        KML base url
     -s --state          State file to save/resume job
+    -l --logfile        Log file path
+    -f --nofilter       Don't filter images (trashing)
+
     -d --debug          Debug mode
     -q --quiet          Quiet mode (Silent)
-    -l --logfile        Log file path
     -n --nocolors       Disable stdout colors
 
     """ % sys.argv[0]
@@ -486,7 +490,7 @@ def main(argv):
     __Input__       = ""
     __Output__      = ""
     __Trash__       = ""
-    __KMLBase__     = ""
+    __KMLBase__     = "__BASE__URL__"
     __State_File__  = ""
 
     # Scope variables initialisation
@@ -499,7 +503,7 @@ def main(argv):
 
     # Arguments parser
     try:
-        opt, args = getopt.getopt(argv, "hi:o:t:k:s:dql:n", ["help", "input=", "output=", "trash=", "kmlbase=", "state=", "debug", "quiet", "logfile=", "nocolors"])
+        opt, args = getopt.getopt(argv, "hi:o:t:k:s:dql:nf", ["help", "input=", "output=", "trash=", "kmlbase=", "state=", "debug", "quiet", "logfile=", "nocolors", "nofilter"])
         args = args
     except getopt.GetoptError, err:
         print str(err)
@@ -530,7 +534,10 @@ def main(argv):
             LOG_FILE  = a
         elif o in ("-n", "--nocolors"):
             global NO_COLORS
-            NO_COLORS  = 1
+            NO_COLORS = 1
+        elif o in ("-f", "--nofilter"):
+            global NO_FILTER
+            NO_FILTER  = 1
         else:
             assert False, "unhandled option"
 
@@ -606,12 +613,13 @@ def main(argv):
         # Increment files index indicator
         __Processed_Files__ += 1
 
-    # Debug output
-    if not quietEnabled():
+    # Filter check
+    if not quietEnabled() and NO_FILTER == 0:
+        # Debug output
         ShowMessage("Filtering images...")
 
-    # Filter images see filterImages()
-    filterImages(__Output__, __Trash__)
+        # Start image filtering
+        filterImages(__Output__, __Trash__)
 
     # Debug output
     if not quietEnabled():

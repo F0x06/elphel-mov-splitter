@@ -28,19 +28,28 @@ This tool split all MOV files created by the Elphel Eyesis 4π camera into JP4 f
     sudo pip install exifread
 
 ### Usage
-    Usage: mov_splitter.py [OPTIONS]
+    Usage: ./mov_splitter.py [OPTIONS]
 
-    -h --help           Prints this
+    [Required arguments]
     -i --input          Input MOV folder
     -o --output         Output JP4 folder
     -t --trash          JP4 trash folder
-    -k --kmlbase        KML file base url
+
+    [Optional arguments]
+    -h --help           Prints this
+
+    -k --kmlbase        KML base url
+    -s --state          State file to save/resume job
+    -l --logfile        Log file path
+    -f --nofilter       Don't filter images (trashing)
 
     -d --debug          Debug mode
     -q --quiet          Quiet mode (Silent)
+    -n --nocolors       Disable stdout colors
+
 
 ### Example usage scenario
-    ./mov_splitter.py -i data/footage/run1/mov -o /data/footage/run1/0 -t /data/footage/run1/trash -k "http://127.0.0.1/footage/run1/0/"
+    ./mov_splitter.py -i data/footage/run1/mov -o /data/footage/run1/0 -t /data/footage/run1/trash
 
 ### Copyright
 
@@ -61,3 +70,4 @@ of the
 
 Please read <[http://foxel.ch/license](http://foxel.ch/license)> for more
 information.
+
