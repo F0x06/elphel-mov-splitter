@@ -213,16 +213,6 @@ def find_all(a_str, sub):
         # Move pointer to next occurence
         start += len(sub)
 
-# Function to convert given time to UTC
-def Local2UTC(LocalTime):
-
-    # Convert time to UTC
-    EpochSecond = time.mktime(LocalTime.timetuple())
-    utcTime = datetime.utcfromtimestamp(EpochSecond)
-
-    # Return the result
-    return utcTime
-
 # Function to extract JPEG images inside a MOV file
 @timed
 def extractMOV(InputFile, OutputFolder, TrashFolder, ModuleName, FailCounter):
@@ -298,7 +288,7 @@ def extractMOV(InputFile, OutputFolder, TrashFolder, ModuleName, FailCounter):
         else:
 
             # Calculate the output filename
-            date_object = Local2UTC( datetime.strptime(str(EXIF_Tags["Image DateTime"]), '%Y:%m:%d %H:%M:%S') )
+            date_object = datetime.strptime(str(EXIF_Tags["Image DateTime"]), '%Y:%m:%d %H:%M:%S')
             Output_Name = "%s_%s_%s" % (date_object.strftime("%s"), EXIF_Tags["EXIF SubSecTimeOriginal"], ModuleName)
 
             # Open output file
