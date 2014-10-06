@@ -90,7 +90,6 @@ DEBUG_MODE = 0
 NO_COLORS = 0
 QUIET_MODE = 0
 LOG_FILE = ""
-FAIL_COUNTER = 0
 
 # MOV file container class
 class MovFile:
@@ -225,11 +224,11 @@ def Local2UTC(LocalTime):
 
 # Function to extract JPEG images inside a MOV file
 @timed
-def extractMOV(InputFile, OutputFolder, TrashFolder, ModuleName):
-    global FAIL_COUNTER
+def extractMOV(InputFile, OutputFolder, TrashFolder, ModuleName, FailCounter):
 
-    # JPEG file header
-    JPEGHeader = b'\xff\xd8\xff\xe1'
+    # Local variables
+    JPEGHeader    = b'\xff\xd8\xff\xe1'
+    Failed_Images = 0
 
     # Open input MOV file
     if not quietEnabled():
@@ -240,6 +239,9 @@ def extractMOV(InputFile, OutputFolder, TrashFolder, ModuleName):
     mov = open(InputFile, 'rb')
     mov_data = mov.read()
     mov.close()
+
+    # Initialize fail counter
+    Failed_Images = FailCounter
 
     # Search all JPEG files inside the MOV file
     JPEG_Offsets     = list(find_all(mov_data, JPEGHeader))
@@ -276,13 +278,13 @@ def extractMOV(InputFile, OutputFolder, TrashFolder, ModuleName):
         Output_Image = None
 
         # Error handling
-        if len(EXIF_Tags) == 0:
+        if len(EXIF_Tags) <= 0:
 
             # Print error
             ShowMessage("Failed to read EXIF data", 1)
 
             # Calculate filename
-            Output_Name = "fail_%d_exif" % (FAIL_COUNTER)
+            Output_Name = "fail_%d_exif" % (Failed_Images)
 
             # Open output file
             Output_Image = open('%s/%s.jp4' % (TrashFolder, Output_Name), 'wb')
@@ -291,7 +293,7 @@ def extractMOV(InputFile, OutputFolder, TrashFolder, ModuleName):
             ShowMessage("Saving image to %s/%s.jp4" % (TrashFolder, Output_Name), 1)
 
             # Increment fail counter
-            FAIL_COUNTER += 1
+            Failed_Images += 1
         else:
 
             # Calculate the output filename
@@ -304,6 +306,8 @@ def extractMOV(InputFile, OutputFolder, TrashFolder, ModuleName):
         # write the file
         Output_Image.write(ImageData)
         Output_Image.close()
+
+    return Failed_Images
 
 # Function to retrive each timestamps into an array of strings
 @timed
@@ -423,8 +427,8 @@ def generateKML(Input, BaseURL):
 
         # Compute GPS data
         Longitude = (-1 if (EXIFData['GPS GPSLongitudeRef'] == "W") else 1) * array2degrees(EXIFData['GPS GPSLongitude'])
-        Latitude  = (-1 if (EXIFData['GPS GPSLatitudeRef'] == "S") else 1) * array2degrees(EXIFData['GPS GPSLatitude'])
-        Altitude  = (-1 if (EXIFData['GPS GPSAltitudeRef'] == "S") else 1) * parseAlt(EXIFData['GPS GPSAltitude'])
+        Latitude  = (-1 if (EXIFData['GPS GPSLatitudeRef'] == "S") else 1)  * array2degrees(EXIFData['GPS GPSLatitude'])
+        Altitude  = (-1 if (EXIFData['GPS GPSAltitudeRef'] == "S") else 1)  * parseAlt(EXIFData['GPS GPSAltitude'])
 
         Heading = 0
         Tilt    = 90
@@ -483,13 +487,14 @@ def main(argv):
     __Trash__       = ""
     __KMLBase__     = ""
     __State_File__  = ""
-    __State_List__  = []
 
     # Scope variables initialisation
-    __MOV_List__ = []
+    __MOV_List__           = []
     __MOV_List_Optimized__ = []
-    __Total_Files__ = 0
-    __Processed_Files__ = 1
+    __Total_Files__        = 0
+    __Processed_Files__    = 1
+    __Fail_Counter__       = 0
+    __State_List__         = []
 
     # Arguments parser
     try:
@@ -535,7 +540,7 @@ def main(argv):
 
     # Create default directories
     if not os.path.isdir(__Output__):
-    	os.makedirs(__Output__)
+        os.makedirs(__Output__)
 
     if not os.path.isdir(__Trash__):
         os.makedirs(__Trash__)
@@ -586,8 +591,8 @@ def main(argv):
         # Extract MOV file and catch exceptions
         try:
 
-            # Extract mov file into jp4
-            extractMOV(MOV.path, __Output__, __Trash__, MOV.module)
+            # Extract mov file into jp4 and store failed images
+            __Fail_Counter__ = extractMOV(MOV.path, __Output__, __Trash__, MOV.module, __Fail_Counter__)
 
             # Save state (used to resume process)
             if __State_File__:
@@ -598,7 +603,7 @@ def main(argv):
             traceback.print_exc()
 
         # Increment files index indicator
-        __Processed_Files__+=1
+        __Processed_Files__ += 1
 
     # Debug output
     if not quietEnabled():
