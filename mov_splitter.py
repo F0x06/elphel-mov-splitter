@@ -169,6 +169,33 @@ def timed(f):
 def quietEnabled():
     return QUIET_MODE
 
+# Read extracted MOV's from file
+@timed
+def LoadState(File):
+
+    # Variables
+    List = []
+
+    # Open file and insert each entry into an array
+    with open(File, 'r') as f:
+        List = [line.rstrip('\n') for line in f]
+
+    # Return the result
+    return List
+
+# Write extracted MOV's to a file
+@timed
+def SaveState(File, List, entry):
+
+    # Insert MOV path into array if not present
+    if not entry in List:
+        List.append(entry)
+
+    # Save array to file
+    with open(File, 'w') as f:
+        for s in List:
+            f.write(s + '\n')
+
 # Function to find all occurences of a given input
 @timed
 def find_all(a_str, sub):
@@ -435,6 +462,7 @@ def _usage():
     -o --output         Output JP4 folder
     -t --trash          JP4 trash folder
     -k --kmlbase        KML file base url
+    -s --state          State file to save/resume job
 
     -d --debug          Debug mode
     -q --quiet          Quiet mode (Silent)
@@ -450,10 +478,12 @@ def _usage():
 def main(argv):
 
     # Arguments variables initialisation
-    __Input__ = ""
-    __Output__ = ""
-    __Trash__ = ""
-    __KMLBase__ = ""
+    __Input__       = ""
+    __Output__      = ""
+    __Trash__       = ""
+    __KMLBase__     = ""
+    __State_File__  = ""
+    __State_List__  = []
 
     # Scope variables initialisation
     __MOV_List__ = []
@@ -463,7 +493,7 @@ def main(argv):
 
     # Arguments parser
     try:
-        opt, args = getopt.getopt(argv, "hi:o:t:k:dql:n", ["help", "input=", "output=", "trash=", "kmlbase=", "debug", "quiet", "logfile=", "nocolors"])
+        opt, args = getopt.getopt(argv, "hi:o:t:k:s:dql:n", ["help", "input=", "output=", "trash=", "kmlbase=", "state=", "debug", "quiet", "logfile=", "nocolors"])
         args = args
     except getopt.GetoptError, err:
         print str(err)
@@ -481,6 +511,8 @@ def main(argv):
             __Trash__  = a.rstrip('/')
         elif o in ("-k", "--kmlbase"):
             __KMLBase__  = a.rstrip('/')
+        elif o in ("-s", "--state"):
+            __State_File__  = a
         elif o in ("-d", "--debug"):
             global DEBUG_MODE
             DEBUG_MODE = 1
@@ -508,6 +540,10 @@ def main(argv):
     if not os.path.isdir(__Trash__):
         os.makedirs(__Trash__)
 
+    # Check if state file exists, if exists load it
+    if os.path.isfile(__State_File__):
+        __State_List__ = LoadState(__State_File__)
+
     # Get modules from input folder
     CameraModules = sorted(os.listdir(__Input__))
 
@@ -520,14 +556,15 @@ def main(argv):
         Movs = []
         for MOV in sorted(glob.glob("%s/%s/*.mov" % (__Input__, mn))):
             Movs.append( MovFile(MOV, mn) )
-            __Total_Files__ += 1
         __MOV_List__.append(Movs)
 
     # Sort MOV files
     while len(__MOV_List__) > 0:
         for MovArray in __MOV_List__:
             for MOV in MovArray:
-                __MOV_List_Optimized__.append(MOV)
+                if not MOV.path in __State_List__:
+                    __MOV_List_Optimized__.append(MOV)
+                    __Total_Files__ += 1
                 MovArray.pop(0)
                 break
         if len(__MOV_List__[0]) <= 0:
@@ -548,7 +585,14 @@ def main(argv):
 
         # Extract MOV file and catch exceptions
         try:
+
+            # Extract mov file into jp4
             extractMOV(MOV.path, __Output__, __Trash__, MOV.module)
+
+            # Save state (used to resume process)
+            if __State_File__:
+                SaveState(__State_File__, __State_List__, MOV.path)
+
         except (IOError, MemoryError):
             ShowMessage("MOV extraction error", 2)
             traceback.print_exc()
