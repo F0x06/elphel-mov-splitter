@@ -238,8 +238,7 @@ def extractMOV(InputFile, OutputFolder, TrashFolder, ModuleName, Results_back):
     mov.close()
 
     # Initialize results counter
-    Results[0] = Results_back[0]
-    Results[1] = Results_back[1]
+    Results = Results_back
 
     # Search all JPEG files inside the MOV file
     JPEG_Offsets     = list(find_all(mov_data, JPEGHeader))
@@ -297,10 +296,39 @@ def extractMOV(InputFile, OutputFolder, TrashFolder, ModuleName, Results_back):
             # Calculate the output filename
             date_object = datetime.strptime(str(EXIF_Tags["Image DateTime"]), '%Y:%m:%d %H:%M:%S')
             Output_Name = "%s_%s_%s" % (date_object.strftime("%s"), EXIF_Tags["EXIF SubSecTimeOriginal"], ModuleName)
+
+            # Increment indexes
             Results[1].append(Output_Name)
+            Results[2] += 1
+
+            # Save output folder
+            OutDir = OutputFolder
+
+            # Check if max files option is specified
+            if Results[3] != 0:
+
+                # Initialize base folder (0)
+                OutDir = "%s/%s" % (OutputFolder, Results[5])
+
+                # Check if extracted files exceed limit
+                if Results[2] > Results[4]:
+
+                    # Increment folder index
+                    Results[5] += 1
+
+                    # Increment actual limit by max files
+                    Results[4] += Results[3]
+
+                    # Determine output folder
+                    OutDir = "%s/%s" % (OutputFolder, Results[5])
+
+                    # Create directory if not exists
+                    if not os.path.isdir(OutDir):
+                        os.makedirs(OutDir)
+
 
             # Open output file
-            Output_Image = open('%s/%s.jp4' % (OutputFolder, Output_Name), 'wb')
+            Output_Image = open('%s/%s.jp4' % (OutDir, Output_Name), 'wb')
 
         # write the file
         Output_Image.write(ImageData)
@@ -497,6 +525,7 @@ def _usage():
     [Optional arguments]
     -h --help           Prints this
 
+    -m --maxfiles       Max JP4 files per folder, will create folders 0, 1, 2, 3 to place next files
     -k --kmlbase        KML base url
     -s --state          State file to save/resume job
     -l --logfile        Log file path
@@ -516,6 +545,7 @@ def main(argv):
     __Input__       = ""
     __Output__      = ""
     __Trash__       = ""
+    __Max_Files__   = 0
     __KMLBase__     = "__BASE__URL__"
     __State_File__  = ""
 
@@ -526,13 +556,17 @@ def main(argv):
     __Processed_Files__    = 1
     __State_List__         = []
     __extractMOV_Results__ = [
-        0, # Fail counter
-        [] # Extracted files
+        0,  # Fail counter
+        [], # Extracted files timestamps
+        0,  # Extracted files count
+        0,  # File limit value
+        0,  # File limit counter
+        0   # File limit dir index
     ]
 
     # Arguments parser
     try:
-        opt, args = getopt.getopt(argv, "hi:o:t:k:s:dql:nf", ["help", "input=", "output=", "trash=", "kmlbase=", "state=", "debug", "quiet", "logfile=", "nocolors", "nofilter"])
+        opt, args = getopt.getopt(argv, "hi:o:t:k:m:s:dql:nf", ["help", "input=", "output=", "trash=", "kmlbase=", "maxfiles=", "state=", "debug", "quiet", "logfile=", "nocolors", "nofilter"])
         args = args
     except getopt.GetoptError, err:
         print str(err)
@@ -548,6 +582,10 @@ def main(argv):
             __Output__  = a.rstrip('/')
         elif o in ("-t", "--trash"):
             __Trash__  = a.rstrip('/')
+        elif o in ("-m", "--maxfiles"):
+            __Max_Files__  = int(a)
+            __extractMOV_Results__[3] = __Max_Files__
+            __extractMOV_Results__[4] = __Max_Files__
         elif o in ("-k", "--kmlbase"):
             __KMLBase__  = a.rstrip('/')
         elif o in ("-s", "--state"):
@@ -578,6 +616,9 @@ def main(argv):
     # Create default directories
     if not os.path.isdir(__Output__):
         os.makedirs(__Output__)
+
+    if __Max_Files__ != 0 and not os.path.isdir("%s/0" % __Output__):
+        os.makedirs("%s/0" % (__Output__))
 
     if not os.path.isdir(__Trash__):
         os.makedirs(__Trash__)
