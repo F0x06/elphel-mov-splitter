@@ -129,6 +129,11 @@ def ShowMessage(Message, Type=0, Halt=0):
             sys.stdout.write("%s [ERROR] %s\n" % (DateNow, Message))
         else:
             sys.stdout.write("%s \033[31m[ERROR]\033[39m %s\n" % (DateNow, Message))
+    elif Type == 3:
+        if NO_COLORS:
+            sys.stdout.write("%s [DEBUG] %s\n" % (DateNow, Message))
+        else:
+            sys.stdout.write("%s \033[34m[DEBUG]\033[39m %s\n" % (DateNow, Message))
 
     # Flush stdout
     sys.stdout.flush()
@@ -161,7 +166,7 @@ def timed(f):
         # Show final result
         if DEBUG_MODE:
             elapsed = time.time() - start
-            print "%s took %ds to finish" % (f.__name__, elapsed)
+            ShowMessage("%s took %ds to finish" % (f.__name__, elapsed), 3)
 
         return result
     return wrapper
@@ -370,7 +375,17 @@ def filterImages(Output, Trash, Results):
 
             # Move files to Trash folder
             for m in ToRemove:
-                shutil.move("%s/%s_%s.jp4" % (Output, ts, m), Trash)
+
+                # Calculate paths
+                SourceFile = "%s/%s_%s.jp4" % (Output, ts, m)
+                DestFile   = "%s/%s_%s.jp4" % (Trash, ts, m)
+
+                # Check if dest trash file exists, if exists remove it
+                if os.path.isfile(DestFile):
+                    os.remove(DestFile)
+
+                # Move file
+                shutil.move(SourceFile, DestFile)
 
             if not quietEnabled():
                 ShowMessage("Incomplete timestamp %s (Missing module(s) %s)" % (ts, str(Missing_Modules)[1:-1]), 1)
@@ -421,6 +436,7 @@ def parseAlt(alt):
 
 
 # Function to generate KML file
+@timed
 def generateKML(Input, BaseURL):
 
     # Open KML file for writing
@@ -494,7 +510,6 @@ def _usage():
 
 # Program entry point function
 # pylint: disable=W0603
-@timed
 def main(argv):
 
     # Arguments variables initialisation
