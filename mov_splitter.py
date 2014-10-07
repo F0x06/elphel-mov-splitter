@@ -44,6 +44,7 @@ import datetime
 import getopt
 import glob
 import os
+import shutil
 import signal
 import string
 import sys
@@ -215,11 +216,11 @@ def find_all(a_str, sub):
 
 # Function to extract JPEG images inside a MOV file
 @timed
-def extractMOV(InputFile, OutputFolder, TrashFolder, ModuleName, FailCounter):
+def extractMOV(InputFile, OutputFolder, TrashFolder, ModuleName, Results_back):
 
     # Local variables
     JPEGHeader    = b'\xff\xd8\xff\xe1'
-    Failed_Images = 0
+    Results       = [0, []]
 
     # Open input MOV file
     if not quietEnabled():
@@ -231,8 +232,9 @@ def extractMOV(InputFile, OutputFolder, TrashFolder, ModuleName, FailCounter):
     mov_data = mov.read()
     mov.close()
 
-    # Initialize fail counter
-    Failed_Images = FailCounter
+    # Initialize results counter
+    Results[0] = Results_back[0]
+    Results[1] = Results_back[1]
 
     # Search all JPEG files inside the MOV file
     JPEG_Offsets     = list(find_all(mov_data, JPEGHeader))
@@ -275,7 +277,7 @@ def extractMOV(InputFile, OutputFolder, TrashFolder, ModuleName, FailCounter):
             ShowMessage("Failed to read EXIF data", 1)
 
             # Calculate filename
-            Output_Name = "fail_%d_exif" % (Failed_Images)
+            Output_Name = "fail_%d_exif" % (Results[0])
 
             # Open output file
             Output_Image = open('%s/%s.jp4' % (TrashFolder, Output_Name), 'wb')
@@ -284,12 +286,13 @@ def extractMOV(InputFile, OutputFolder, TrashFolder, ModuleName, FailCounter):
             ShowMessage("Saving image to %s/%s.jp4" % (TrashFolder, Output_Name), 1)
 
             # Increment fail counter
-            Failed_Images += 1
+            Results[0] += 1
         else:
 
             # Calculate the output filename
             date_object = datetime.strptime(str(EXIF_Tags["Image DateTime"]), '%Y:%m:%d %H:%M:%S')
             Output_Name = "%s_%s_%s" % (date_object.strftime("%s"), EXIF_Tags["EXIF SubSecTimeOriginal"], ModuleName)
+            Results[1].append(Output_Name)
 
             # Open output file
             Output_Image = open('%s/%s.jp4' % (OutputFolder, Output_Name), 'wb')
@@ -298,7 +301,7 @@ def extractMOV(InputFile, OutputFolder, TrashFolder, ModuleName, FailCounter):
         Output_Image.write(ImageData)
         Output_Image.close()
 
-    return Failed_Images
+    return Results
 
 # Function to retrive each timestamps into an array of strings
 @timed
@@ -326,30 +329,48 @@ def getTimeStamps(Output):
 
 # Function to move all incomplete sequences to __Trash__ folder, a complete sequence need to be 1-9
 @timed
-def filterImages(Output, Trash):
+def filterImages(Output, Trash, Results):
+
+    # Get extracted JP4's list
+    List = sorted(Results[1])
+
+    # Initialize variable
+    ListNoMod = []
+
+    # Build timestamps list without module (_x)
+    for item in List:
+        ListNoMod.append(item[:-2])
+
+    # Sort and remove duplicates from list
+    ListNoMod = sorted(set(ListNoMod))
 
     # Walk over timestamps
-    for ts in getTimeStamps(Output):
+    for ts in ListNoMod:
 
         # Missing modules array
         Missing_Modules = []
 
         # Walk over modules range 1-9
-        for i in range(1, 9):
+        for i in range(1, 10):
 
             # Calculate filename for comparaison
-            FileName = "%s/%s_%s.jp4" % (Output, ts, i)
+            FileName = "%s_%s" % (ts, i)
 
             # Check if file exists
-            if not(os.path.isfile(FileName)):
+            if not(FileName in List):
 
                 # Append missing module to list
                 Missing_Modules.append(i)
 
+        # Check presense of missing modules
         if len(Missing_Modules) > 0:
 
-            # Move file to __Trash__ folder
-            os.system("mv %s/%s* %s" % (Output, ts, Trash))
+            # Calculate modules to be removed
+            ToRemove = [x for x in range(1, 10) if x not in Missing_Modules]
+
+            # Move files to Trash folder
+            for m in ToRemove:
+                shutil.move("%s/%s_%s.jp4" % (Output, ts, m), Trash)
 
             if not quietEnabled():
                 ShowMessage("Incomplete timestamp %s (Missing module(s) %s)" % (ts, str(Missing_Modules)[1:-1]), 1)
@@ -488,8 +509,11 @@ def main(argv):
     __MOV_List_Optimized__ = []
     __Total_Files__        = 0
     __Processed_Files__    = 1
-    __Fail_Counter__       = 0
     __State_List__         = []
+    __extractMOV_Results__ = [
+        0, # Fail counter
+        [] # Extracted files
+    ]
 
     # Arguments parser
     try:
@@ -590,7 +614,7 @@ def main(argv):
         try:
 
             # Extract mov file into jp4 and store failed images
-            __Fail_Counter__ = extractMOV(MOV.path, __Output__, __Trash__, MOV.module, __Fail_Counter__)
+            __extractMOV_Results__ = extractMOV(MOV.path, __Output__, __Trash__, MOV.module, __extractMOV_Results__)
 
             # Save state (used to resume process)
             if __State_File__:
@@ -609,7 +633,7 @@ def main(argv):
         ShowMessage("Filtering images...")
 
         # Start image filtering
-        filterImages(__Output__, __Trash__)
+        filterImages(__Output__, __Trash__, __extractMOV_Results__)
 
     # Debug output
     if not quietEnabled():
