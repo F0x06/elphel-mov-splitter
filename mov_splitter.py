@@ -297,8 +297,7 @@ def extractMOV(InputFile, OutputFolder, TrashFolder, ModuleName, Results_back):
             date_object = datetime.strptime(str(EXIF_Tags["Image DateTime"]), '%Y:%m:%d %H:%M:%S')
             Output_Name = "%s_%s_%s" % (date_object.strftime("%s"), EXIF_Tags["EXIF SubSecTimeOriginal"], ModuleName)
 
-            # Increment indexes
-            Results[1].append(Output_Name)
+            # Increment extracted files count
             Results[2] += 1
 
             # Save output folder
@@ -322,10 +321,18 @@ def extractMOV(InputFile, OutputFolder, TrashFolder, ModuleName, Results_back):
                     # Determine output folder
                     OutDir = "%s/%s" % (OutputFolder, Results[5])
 
+                    # Notify user about directory change
+                    ShowMessage("Directory changed to %s due to files limit" % OutDir)
+
                     # Create directory if not exists
                     if not os.path.isdir(OutDir):
                         os.makedirs(OutDir)
 
+            # Add timestamp to list
+            if Results[3] != 0:
+                Results[1].append("%d/%s" % (Results[5], Output_Name))
+            else:
+                Results[1].append(Output_Name)
 
             # Open output file
             Output_Image = open('%s/%s.jp4' % (OutDir, Output_Name), 'wb')
@@ -364,21 +371,50 @@ def getTimeStamps(Output):
 @timed
 def filterImages(Output, Trash, Results):
 
-    # Get extracted JP4's list
-    List = sorted(Results[1])
+    # Variable to store images informations
+    TSList = {}
 
-    # Initialize variable
-    ListNoMod = []
+    # Iterate over extracted images
+    for elem in Results[1]:
 
-    # Build timestamps list without module (_x)
-    for item in List:
-        ListNoMod.append(item[:-2])
+        # Retrive base folder if available and timestamp
+        seg = elem.split('/')
 
-    # Sort and remove duplicates from list
-    ListNoMod = sorted(set(ListNoMod))
+        # Check presense of base folder
+        if len(seg) > 1:
 
-    # Walk over timestamps
-    for ts in ListNoMod:
+            # Extract parts (timestamp, microsec, module)
+            parts = seg[1].split('_')
+
+            # Build timestamp without module
+            ts = "%s_%s" % (parts[0], parts[1])
+
+            # Insert timestamp into list if not exists
+            if not ts in TSList:
+                TSList[ ts ] = {}
+
+            # Insert module and base folder to list if module not exists
+            if not parts[2] in TSList[ts]:
+                TSList[ ts ][ int(parts[2]) ] = int(seg[0])
+
+        else:
+
+            # Extract parts (timestamp, microsec, module)
+            parts = seg[0].split('_')
+
+            # Build timestamp without module
+            ts = "%s_%s" % (parts[0], parts[1])
+
+            # Insert timestamp into list if not exists
+            if not ts in TSList:
+                TSList[ts] = {}
+
+            # Insert module into list if module not exists
+            if not parts[2] in TSList[ts]:
+                TSList[ts][int(parts[2])] = -1
+
+    # Walk over paths
+    for ts in TSList:
 
         # Missing modules array
         Missing_Modules = []
@@ -386,11 +422,8 @@ def filterImages(Output, Trash, Results):
         # Walk over modules range 1-9
         for i in range(1, 10):
 
-            # Calculate filename for comparaison
-            FileName = "%s_%s" % (ts, i)
-
             # Check if file exists
-            if not(FileName in List):
+            if not(i in TSList[ts]):
 
                 # Append missing module to list
                 Missing_Modules.append(i)
@@ -401,11 +434,23 @@ def filterImages(Output, Trash, Results):
             # Calculate modules to be removed
             ToRemove = [x for x in range(1, 10) if x not in Missing_Modules]
 
-            # Move files to Trash folder
+            # Debug output
+            if not quietEnabled():
+                ShowMessage("Incomplete timestamp %s (Missing module(s) %s)" % (ts, str(Missing_Modules)[1:-1]), 1)
+
+            # Iterate over missing modules
             for m in ToRemove:
 
-                # Calculate paths
-                SourceFile = "%s/%s_%s.jp4" % (Output, ts, m)
+                # Get subfolder (if not set is -1)
+                SubFolder = TSList[ts][m]
+
+                # Check presense of subfolder and calculate source file name
+                if SubFolder != -1:
+                    SourceFile = "%s/%s/%s_%s.jp4" % (Output, TSList[ts][m], ts, m)
+                else:
+                    SourceFile = "%s/%s_%s.jp4" % (Output, ts, m)
+
+                # Calculate destination file name
                 DestFile   = "%s/%s_%s.jp4" % (Trash, ts, m)
 
                 # Check if dest trash file exists, if exists remove it
@@ -414,9 +459,6 @@ def filterImages(Output, Trash, Results):
 
                 # Move file
                 shutil.move(SourceFile, DestFile)
-
-            if not quietEnabled():
-                ShowMessage("Incomplete timestamp %s (Missing module(s) %s)" % (ts, str(Missing_Modules)[1:-1]), 1)
 
 # Function to convert a fractioned EXIF array into degrees
 def array2degrees(dms):
