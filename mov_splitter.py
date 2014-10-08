@@ -219,6 +219,48 @@ def find_all(a_str, sub):
         # Move pointer to next occurence
         start += len(sub)
 
+# Function to count JPEG images inside a MOV file
+@timed
+def countMOV(InputFile):
+
+    # Local variables
+    JPEGHeader    = b'\xff\xd8\xff\xe1'
+
+    # Open input MOV file
+    if not quietEnabled():
+        sys.stdout.flush()
+        sys.stdout.write("Loading MOV file...\r")
+        sys.stdout.flush()
+
+    mov = open(InputFile, 'rb')
+    mov_data = mov.read()
+    mov.close()
+
+    # Search all JPEG files inside the MOV file
+    JPEG_Offsets     = list(find_all(mov_data, JPEGHeader))
+    JPEG_Offsets_len = len(JPEG_Offsets)
+
+    # Variable to store results
+    Result = [0, 0]
+
+    # Store images count
+    Result[0] = JPEG_Offsets_len
+
+    # Iterate over all images
+    for _Index, _Offset in enumerate(JPEG_Offsets):
+
+        # Calculate the filesize for extraction
+        if (_Index >= len(JPEG_Offsets) - 1):
+            Size = len(mov_data) - _Offset
+        else:
+            Size = (JPEG_Offsets[_Index+1] - _Offset)
+
+        # Increment images size
+        Result[1] += Size
+
+    # Return result
+    return Result
+
 # Function to extract JPEG images inside a MOV file
 @timed
 def extractMOV(InputFile, OutputFolder, TrashFolder, ModuleName, Results_back):
@@ -504,6 +546,24 @@ def parseAlt(alt):
     # Return result
     return round(_round*rslt)/_round
 
+# Function to convert bytes to an human readable file size
+def human_size(nbytes):
+
+    # Units
+    suffixes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
+
+    # Check for zero input
+    if nbytes == 0: return '0 B'
+    i = 0
+
+    # Convert input
+    while nbytes >= 1024 and i < len(suffixes)-1:
+        nbytes /= 1024.
+        i += 1
+    f = ('%.2f' % nbytes).rstrip('0').rstrip('.')
+
+    # Return result
+    return '%s %s' % (f, suffixes[i])
 
 # Function to generate KML file
 @timed
@@ -567,6 +627,7 @@ def _usage():
     [Optional arguments]
     -h --help           Prints this
 
+    -c --count          Don't extract MOV files, just count images
     -m --maxfiles       Max JP4 files per folder, will create folders 0, 1, 2, 3 to place next files
     -k --kmlbase        KML base url
     -s --state          State file to save/resume job
@@ -584,12 +645,13 @@ def _usage():
 def main(argv):
 
     # Arguments variables initialisation
-    __Input__       = ""
-    __Output__      = ""
-    __Trash__       = ""
-    __Max_Files__   = 0
-    __KMLBase__     = "__BASE__URL__"
-    __State_File__  = ""
+    __Input__        = ""
+    __Output__       = ""
+    __Trash__        = ""
+    __Count_Images__ = 0
+    __Max_Files__    = 0
+    __KMLBase__      = "__BASE__URL__"
+    __State_File__   = ""
 
     # Scope variables initialisation
     __MOV_List__           = []
@@ -597,6 +659,10 @@ def main(argv):
     __Total_Files__        = 0
     __Processed_Files__    = 1
     __State_List__         = []
+    __countMOV_Results__ = [
+        0, # Images count
+        0  # Total images size
+    ]
     __extractMOV_Results__ = [
         0,  # Fail counter
         [], # Extracted files timestamps
@@ -608,7 +674,7 @@ def main(argv):
 
     # Arguments parser
     try:
-        opt, args = getopt.getopt(argv, "hi:o:t:k:m:s:dql:nf", ["help", "input=", "output=", "trash=", "kmlbase=", "maxfiles=", "state=", "debug", "quiet", "logfile=", "nocolors", "nofilter"])
+        opt, args = getopt.getopt(argv, "hi:o:t:k:cm:s:dql:nf", ["help", "input=", "output=", "trash=", "kmlbase=", "count", "maxfiles=", "state=", "debug", "quiet", "logfile=", "nocolors", "nofilter"])
         args = args
     except getopt.GetoptError, err:
         print str(err)
@@ -624,6 +690,8 @@ def main(argv):
             __Output__  = a.rstrip('/')
         elif o in ("-t", "--trash"):
             __Trash__  = a.rstrip('/')
+        elif o in ("-c", "--count"):
+            __Count_Images__ = 1
         elif o in ("-m", "--maxfiles"):
             __Max_Files__  = int(a)
             __extractMOV_Results__[3] = __Max_Files__
@@ -697,7 +765,11 @@ def main(argv):
 
     # Debug output
     if not quietEnabled():
-        ShowMessage("Extracting MOV files...")
+
+        if __Count_Images__ == 0:
+            ShowMessage("Extracting MOV files...")
+        else:
+            ShowMessage("Counting MOV files...")
 
     # Error handling
     if __Total_Files__ == 0:
@@ -711,12 +783,28 @@ def main(argv):
         # Extract MOV file and catch exceptions
         try:
 
-            # Extract mov file into jp4 and store failed images
-            __extractMOV_Results__ = extractMOV(MOV.path, __Output__, __Trash__, MOV.module, __extractMOV_Results__)
+            # Count images if specified, else extract mov file into jp4 and store failed images
+            if __Count_Images__ == 0:
 
-            # Save state (used to resume process)
-            if __State_File__:
-                SaveState(__State_File__, __State_List__, MOV.path)
+                #  Extract mov file into jp4 and store failed images
+                __extractMOV_Results__ = extractMOV(MOV.path, __Output__, __Trash__, MOV.module, __extractMOV_Results__)
+
+                # Save state (used to resume process)
+                if __State_File__:
+                    SaveState(__State_File__, __State_List__, MOV.path)
+
+            else:
+
+                # Count images inside MOV file
+                Count = countMOV(MOV.path)
+
+                # Debug output
+                if not quietEnabled():
+                    ShowMessage("%d image(s) found, size: %s" % (Count[0], human_size(Count[1])))
+
+                # Increment total files count
+                __countMOV_Results__[0] += Count[0]
+                __countMOV_Results__[1] += Count[1]
 
         except (IOError, MemoryError):
             ShowMessage("MOV extraction error", 2)
@@ -726,22 +814,30 @@ def main(argv):
         __Processed_Files__ += 1
 
     # Filter check
-    if not quietEnabled() and NO_FILTER == 0:
+    if not quietEnabled() and NO_FILTER == 0 and __Count_Images__ == 0:
         # Debug output
         ShowMessage("Filtering images...")
 
         # Start image filtering
         filterImages(__Output__, __Trash__, __extractMOV_Results__)
 
+    # Generate KML if not in counting mode
+    if __Count_Images__ == 0:
+        # Debug output
+        if not quietEnabled():
+            ShowMessage("Generating KML file...")
+
+        # Generate KML file
+        generateKML(__Output__, __KMLBase__)
+
+    # Debug output
+    if not quietEnabled() and __Count_Images__ != 0:
+        ShowMessage("Total images: %d" % __countMOV_Results__[0])
+        ShowMessage("Total size: %s" % human_size(__countMOV_Results__[1]))
+
     # Debug output
     if not quietEnabled():
-        ShowMessage("Generating KML file...")
-
-    # Generate KML file
-    generateKML(__Output__, __KMLBase__)
-
-    # Debug output
-    ShowMessage("Done")
+        ShowMessage("Done")
 
 # Program entry point
 if __name__ == "__main__":
