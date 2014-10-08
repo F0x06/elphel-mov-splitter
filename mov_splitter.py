@@ -718,24 +718,29 @@ def main(argv):
         else:
             assert False, "unhandled option"
 
-    # Arguments check
-    if len(argv) < 5:
-        _usage()
-        return
-
     # Create default directories
-    if not os.path.isdir(__Output__):
+    if __Output__ and not os.path.isdir(__Output__):
         os.makedirs(__Output__)
 
-    if __Max_Files__ != 0 and not os.path.isdir("%s/0" % __Output__):
+    if __Max_Files__ != 0 and __Output__ and not os.path.isdir("%s/0" % __Output__):
         os.makedirs("%s/0" % (__Output__))
 
-    if not os.path.isdir(__Trash__):
+    if __Trash__ and not os.path.isdir(__Trash__):
         os.makedirs(__Trash__)
 
     # Check if state file exists, if exists load it
     if os.path.isfile(__State_File__):
         __State_List__ = LoadState(__State_File__)
+
+    # Arguments checking
+    if not __Input__:
+        _usage() 
+        return
+
+    if not __Count_Images__:
+        if (not __Output__) or (not NO_FILTER and not __Trash__):
+            _usage()
+            return
 
     # Get modules from input folder
     CameraModules = sorted(os.listdir(__Input__))
