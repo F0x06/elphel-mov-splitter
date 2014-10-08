@@ -43,6 +43,7 @@
 import datetime
 import getopt
 import glob
+import json
 import os
 import shutil
 import signal
@@ -179,28 +180,49 @@ def quietEnabled():
 @timed
 def LoadState(File):
 
-    # Variables
-    List = []
+    # Debug output
+    if not quietEnabled():
+        sys.stdout.flush()
+        sys.stdout.write("Loading state file...\r")
+        sys.stdout.flush()
 
-    # Open file and insert each entry into an array
+    # Variables
+    List = {}
+
+    # Open file, and load array
     with open(File, 'r') as f:
-        List = [line.rstrip('\n') for line in f]
+        List = json.loads(f.read())
 
     # Return the result
     return List
 
 # Write extracted MOV's to a file
 @timed
-def SaveState(File, List, entry):
+def SaveState(File, List, moventry, imagedata):
+
+    # Debug output
+    if not quietEnabled():
+        sys.stdout.flush()
+        sys.stdout.write("Saving state file...\r")
+        sys.stdout.flush()
 
     # Insert MOV path into array if not present
-    if not entry in List:
-        List.append(entry)
+    if not moventry in List['extracted_movs']:
+        List['extracted_movs'].append(moventry)
+
+    # Put extracted images into array
+    for item in imagedata[1]:
+        if not item in List['extracted_images']:
+            List['extracted_images'].append(item)
+
+    # Put settings variables into array
+    List['extracted_images_data']['limit_counter']   = imagedata[4]
+    List['extracted_images_data']['limit_dir_index'] = imagedata[5]
+    List['extracted_images_data']['files_counter']     = imagedata[2]
 
     # Save array to file
     with open(File, 'w') as f:
-        for s in List:
-            f.write(s + '\n')
+        f.write( json.dumps(List, sort_keys=True, indent=4, separators=(',', ': ')) )
 
 # Function to find all occurences of a given input
 @timed
@@ -658,7 +680,15 @@ def main(argv):
     __MOV_List_Optimized__ = []
     __Total_Files__        = 0
     __Processed_Files__    = 1
-    __State_List__         = []
+    __State_List__         = {
+        'extracted_movs':   [],    # Extracted movs
+        'extracted_images': [],    # Extracted images
+        'extracted_images_data': { # Extracted images data
+            'files_counter': 0,    # Extracted files count
+            'limit_counter': 0,    # File limit counter
+            'limit_dir_index': 0   # File limit dir index
+        }
+    }
     __countMOV_Results__ = [
         0, # Images count
         0  # Total images size
@@ -695,7 +725,6 @@ def main(argv):
         elif o in ("-m", "--maxfiles"):
             __Max_Files__  = int(a)
             __extractMOV_Results__[3] = __Max_Files__
-            __extractMOV_Results__[4] = __Max_Files__
         elif o in ("-k", "--kmlbase"):
             __KMLBase__  = a.rstrip('/')
         elif o in ("-s", "--state"):
@@ -730,11 +759,26 @@ def main(argv):
 
     # Check if state file exists, if exists load it
     if os.path.isfile(__State_File__):
+
+        # Load state file
         __State_List__ = LoadState(__State_File__)
+
+        # Restore variables
+        __extractMOV_Results__[1] = __State_List__['extracted_images']
+        __extractMOV_Results__[2] = __State_List__['extracted_images_data']['files_counter']
+        __extractMOV_Results__[4] = __State_List__['extracted_images_data']['limit_counter']
+        __extractMOV_Results__[5] = __State_List__['extracted_images_data']['limit_dir_index']
+
+        # Debug output
+        if not quietEnabled():
+            ShowMessage("State file loaded")
+
+    else:
+        __extractMOV_Results__[4] = __Max_Files__
 
     # Arguments checking
     if not __Input__:
-        _usage() 
+        _usage()
         return
 
     if not __Count_Images__:
@@ -756,11 +800,30 @@ def main(argv):
             Movs.append( MovFile(MOV, mn) )
         __MOV_List__.append(Movs)
 
+    # Check if all MOVS are extracted when state file is specified
+    if __State_File__:
+
+        # Result value
+        Finished = 1
+
+        # Iterate over MOV files and compare it to restored list
+        for MovArray in __MOV_List__:
+            for MOV in MovArray:
+                if not MOV.path in __State_List__['extracted_movs']:
+                    Finished = 0
+                    break
+
+        # If already extracted notify user and exit program
+        if Finished:
+            ShowMessage("All mov files already extracted, nothing to do", 1)
+            ShowMessage("Done")
+            return
+
     # Sort MOV files
     while len(__MOV_List__) > 0:
         for MovArray in __MOV_List__:
             for MOV in MovArray:
-                if not MOV.path in __State_List__:
+                if not MOV.path in __State_List__['extracted_movs']:
                     __MOV_List_Optimized__.append(MOV)
                     __Total_Files__ += 1
                 MovArray.pop(0)
@@ -796,7 +859,7 @@ def main(argv):
 
                 # Save state (used to resume process)
                 if __State_File__:
-                    SaveState(__State_File__, __State_List__, MOV.path)
+                    SaveState(__State_File__, __State_List__, MOV.path, __extractMOV_Results__)
 
             else:
 
