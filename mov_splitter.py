@@ -343,7 +343,7 @@ def extractMOV(InputFile, OutputFolder, TrashFolder, ModuleName, Results_back):
 
     return Results
 
-# Function to retrive each timestamps into an array of strings
+# Function to retrieve each timestamps into an array of strings
 @timed
 def getTimeStamps(Output):
 
@@ -353,7 +353,7 @@ def getTimeStamps(Output):
     # Walk over jp4 files in the __Output__ folder
     for i in glob.glob("%s/*.jp4" % Output):
 
-        # Retrive just the filename
+        # Retrieve just the filename
         Fname = i.split('/')
         Fname = Fname[len(Fname) - 1]
 
@@ -377,7 +377,7 @@ def filterImages(Output, Trash, Results):
     # Iterate over extracted images
     for elem in Results[1]:
 
-        # Retrive base folder if available and timestamp
+        # Retrieve base folder if available and timestamp
         seg = elem.split('/')
 
         # Check presense of base folder
