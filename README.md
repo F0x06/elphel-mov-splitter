@@ -38,6 +38,8 @@ This tool split all MOV files created by the Elphel Eyesis 4π camera into JP4 f
     [Optional arguments]
     -h --help           Prints this
 
+    -c --count          Don't extract MOV files, just count images
+    -m --maxfiles       Max JP4 files per folder, will create folders 0, 1, 2, 3 to place next files
     -k --kmlbase        KML base url
     -s --state          State file to save/resume job
     -l --logfile        Log file path
@@ -70,4 +72,3 @@ of the
 
 Please read <[http://foxel.ch/license](http://foxel.ch/license)> for more
 information.
-
