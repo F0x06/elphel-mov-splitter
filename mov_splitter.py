@@ -249,10 +249,12 @@ def SaveState(Folder, moventry, imagedata):
 
     # Write MOV path into file
     STATE_FILE_MOV.write("%s\n" % moventry)
+    STATE_FILE_MOV.flush()
 
     # Write extracted images into file
     for item in imagedata[1]:
         STATE_FILE_JP4.write("%s\n" % item)
+    STATE_FILE_JP4.flush()
 
     # Write options to file
     with open("%s/options.dat" % Folder, 'w+') as f:
