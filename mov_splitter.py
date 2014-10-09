@@ -716,6 +716,8 @@ def _usage():
     Usage: %s [OPTIONS]
 
     [Required arguments]
+    -f --folder         Base working folder (where mov, jp4, trash are)
+    [and/or]
     -i --input          Input MOV folder
     -o --output         Output JP4 folder
     -t --trash          JP4 trash folder
@@ -741,6 +743,7 @@ def _usage():
 def main(argv):
 
     # Arguments variables initialisation
+    __Folder__       = ""
     __Input__        = ""
     __Output__       = ""
     __Trash__        = ""
@@ -780,7 +783,7 @@ def main(argv):
 
     # Arguments parser
     try:
-        opt, args = getopt.getopt(argv, "hi:o:t:k:cm:s:dql:nf", ["help", "input=", "output=", "trash=", "kmlbase=", "count", "maxfiles=", "state=", "debug", "quiet", "logfile=", "nocolors", "nofilter"])
+        opt, args = getopt.getopt(argv, "hf:i:o:t:k:cm:s:dql:nf", ["help", "folder=", "input=", "output=", "trash=", "kmlbase=", "count", "maxfiles=", "state=", "debug", "quiet", "logfile=", "nocolors", "nofilter"])
         args = args
     except getopt.GetoptError, err:
         print str(err)
@@ -790,6 +793,8 @@ def main(argv):
         if o in ("-h", "--help"):
             _usage()
             sys.exit()
+        elif o in ("-f", "--folder"):
+            __Folder__  = a.rstrip('/')
         elif o in ("-i", "--input"):
             __Input__  = a.rstrip('/')
         elif o in ("-o", "--output"):
@@ -823,6 +828,27 @@ def main(argv):
             NO_FILTER  = 1
         else:
             assert False, "unhandled option"
+
+    # Base folder check
+    if __Folder__:
+
+        # Backup variables
+        Input = __Input__
+        Output = __Output__
+        Trash = __Trash__
+
+        # Calculate default paths
+        __Input__ = ("%s/mov" % __Folder__)
+        __Output__ = ("%s/jp4" % __Folder__)
+        __Trash__ = ("%s/trash" % __Folder__)
+
+        # Override paths
+        if Input:
+            __Input__ = Input
+        if Output:
+            __Output__ = Output
+        if Trash:
+            __Trash__ = Trash
 
     # Create default directories
     if __Output__ and not os.path.isdir(__Output__):
