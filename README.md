@@ -11,7 +11,7 @@ This tool split all MOV files created by the Elphel Eyesis 4π camera into JP4 f
         - [Details](#user-content-details)
         - [Installation](#user-content-installation)
     - [Usage](#user-content-usage)
-    - [Example usage scenario](#user-content-example-usage-scenario)
+    - [Example usage scenarios](#user-content-example-usage-scenarios)
     - [Copyright](#user-content-copyright)
     - [License](#user-content-license)
 
@@ -54,10 +54,10 @@ This tool split all MOV files created by the Elphel Eyesis 4π camera into JP4 f
 
 
 ### Example usage scenarios
-    ./mov_splitter.py -i data/footage/run1/mov -o /data/footage/run1/0 -t /data/footage/run1/trash
+    ./mov_splitter.py -f data/footage/run1
 or
 
-    ./mov_splitter.py -f data/footage/run1
+    ./mov_splitter.py -i data/footage/run1/mov -o /data/footage/run1/0 -t /data/footage/run1/trash
 
 ### Copyright
 
