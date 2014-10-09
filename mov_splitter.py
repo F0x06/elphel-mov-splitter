@@ -43,7 +43,6 @@
 import datetime
 import getopt
 import glob
-import json
 import os
 import shutil
 import signal
@@ -95,7 +94,6 @@ QUIET_MODE = 0
 LOG_FILE   = ""
 STATE_FILE_MOV = None
 STATE_FILE_JP4 = None
-STATE_FILE_OPTIONS = None
 
 # MOV file container class
 class MovFile:
@@ -181,7 +179,7 @@ def quietEnabled():
 
 # Read extracted MOV's from file
 @timed
-def LoadState(File):
+def LoadState(Folder):
 
     # Debug output
     if not quietEnabled():
@@ -201,17 +199,17 @@ def LoadState(File):
     }
 
     # Load mov paths
-    for line in open( "%s/mov.dat" % File, "r" ):
+    for line in open( "%s/mov.dat" % Folder, "r" ):
         if not '#' in line[0]:
             List['extracted_movs'].append(line[:-1])
 
     # Load JP4 paths
-    for line in open( "%s/jp4.dat" % File, "r" ):
+    for line in open( "%s/jp4.dat" % Folder, "r" ):
         if not '#' in line[0]:
             List['extracted_images'].append(line[:-1])
 
     # Load options
-    f = open("%s/options.dat" % File, "r")
+    f = open("%s/options.dat" % Folder, "r")
     lines = f.readlines()
 
     List['extracted_images_data']['files_counter']   = int(lines[1][:-1])
@@ -259,9 +257,9 @@ def SaveState(Folder, moventry, imagedata):
     # Write options to file
     with open("%s/options.dat" % Folder, 'w+') as f:
         f.write("# Elphel-mov-splitter options state file #\n")
-        f.write("%s\n" % imagedata[2])
-        f.write("%s\n" % imagedata[4])
+        f.write("%s\n" % imagedata[3])
         f.write("%s\n" % imagedata[5])
+        f.write("%s\n" % imagedata[6])
 
 # Function to find all occurences of a given input
 @timed
@@ -342,6 +340,7 @@ def extractMOV(InputFile, OutputFolder, TrashFolder, ModuleName, Results_back):
 
     # Initialize results counter
     Results = Results_back
+    Results[1] = []
 
     # Search all JPEG files inside the MOV file
     JPEG_Offsets     = list(find_all(mov_data, JPEGHeader))
@@ -401,28 +400,28 @@ def extractMOV(InputFile, OutputFolder, TrashFolder, ModuleName, Results_back):
             Output_Name = "%s_%s_%s" % (date_object.strftime("%s"), EXIF_Tags["EXIF SubSecTimeOriginal"], ModuleName)
 
             # Increment extracted files count
-            Results[2] += 1
+            Results[3] += 1
 
             # Save output folder
             OutDir = OutputFolder
 
             # Check if max files option is specified
-            if Results[3] != 0:
+            if Results[4] != 0:
 
                 # Initialize base folder (0)
-                OutDir = "%s/%s" % (OutputFolder, Results[5])
+                OutDir = "%s/%s" % (OutputFolder, Results[6])
 
                 # Check if extracted files exceed limit
-                if Results[2] > Results[4]:
+                if Results[3] > Results[5]:
 
                     # Increment folder index
-                    Results[5] += 1
+                    Results[6] += 1
 
                     # Increment actual limit by max files
-                    Results[4] += Results[3]
+                    Results[5] += Results[4]
 
                     # Determine output folder
-                    OutDir = "%s/%s" % (OutputFolder, Results[5])
+                    OutDir = "%s/%s" % (OutputFolder, Results[6])
 
                     # Notify user about directory change
                     ShowMessage("Directory changed to %s due to files limit" % OutDir)
@@ -432,10 +431,12 @@ def extractMOV(InputFile, OutputFolder, TrashFolder, ModuleName, Results_back):
                         os.makedirs(OutDir)
 
             # Add timestamp to list
-            if Results[3] != 0:
-                Results[1].append("%d/%s" % (Results[5], Output_Name))
+            if Results[4] != 0:
+                Results[1].append("%d/%s" % (Results[6], Output_Name))
+                Results[2].append("%d/%s" % (Results[6], Output_Name))
             else:
                 Results[1].append(Output_Name)
+                Results[2].append(Output_Name)
 
             # Open output file
             Output_Image = open('%s/%s.jp4' % (OutDir, Output_Name), 'wb')
@@ -476,9 +477,10 @@ def filterImages(Output, Trash, Results):
 
     # Variable to store images informations
     TSList = {}
+    ValidatedImages = []
 
     # Iterate over extracted images
-    for elem in Results[1]:
+    for elem in Results[2]:
 
         # Retrieve base folder if available and timestamp
         seg = elem.split('/')
@@ -525,7 +527,7 @@ def filterImages(Output, Trash, Results):
         # Walk over modules range 1-9
         for i in range(1, 10):
 
-            # Check if file exists
+            # Check if module exists
             if not(i in TSList[ts]):
 
                 # Append missing module to list
@@ -561,7 +563,23 @@ def filterImages(Output, Trash, Results):
                     os.remove(DestFile)
 
                 # Move file
-                shutil.move(SourceFile, DestFile)
+                if os.path.isfile(SourceFile):
+                    shutil.move(SourceFile, DestFile)
+        else:
+            # Iterate over possible modules
+            for i in range(1, 9):
+
+                # Get base folder
+                folder = TSList[ts][i]
+
+                # Check presence of base folder
+                if folder != -1:
+                    ValidatedImages.append("%s/%s_%s" % (TSList[ts][i], ts, i))
+                else:
+                    ValidatedImages.append("%s_%s" % (ts, i))
+
+    # Return result
+    return ValidatedImages
 
 # Function to convert a fractioned EXIF array into degrees
 def array2degrees(dms):
@@ -628,7 +646,7 @@ def human_size(nbytes):
 
 # Function to generate KML file
 @timed
-def generateKML(Input, BaseURL):
+def generateKML(Input, BaseURL, Results):
 
     # Open KML file for writing
     KML_File = open("%s/../map_points.kml" % Input, "wb")
@@ -636,8 +654,15 @@ def generateKML(Input, BaseURL):
     # Write header
     KML_File.write(KML_Header)
 
+    # Build a list with only module 1
+    List = []
+    for i in Results:
+        parts = i.split('_')
+        if int(parts[len(parts)-1]) == 1:
+            List.append("%s/%s.jp4" % (Input, i))
+
     # Walk over files
-    for f in sorted(glob.glob("%s/*_1.jp4" % Input)):
+    for f in List:
 
         # Open image and extract EXIF data
         Image = open(f, "rb")
@@ -734,12 +759,14 @@ def main(argv):
     ]
     __extractMOV_Results__ = [
         0,  # Fail counter
+        [], # Last extracted files timestamps
         [], # Extracted files timestamps
         0,  # Extracted files count
         0,  # File limit value
         0,  # File limit counter
         0   # File limit dir index
     ]
+    __Filtered_Images__ = []
 
     # Arguments parser
     try:
@@ -763,7 +790,7 @@ def main(argv):
             __Count_Images__ = 1
         elif o in ("-m", "--maxfiles"):
             __Max_Files__  = int(a)
-            __extractMOV_Results__[3] = __Max_Files__
+            __extractMOV_Results__[4] = __Max_Files__
         elif o in ("-k", "--kmlbase"):
             __KMLBase__  = a.rstrip('/')
         elif o in ("-s", "--state"):
@@ -813,10 +840,10 @@ def main(argv):
                 __State_List__ = LoadState(__State_Dir__)
 
                 # Restore variables
-                __extractMOV_Results__[1] = __State_List__['extracted_images']
-                __extractMOV_Results__[2] = __State_List__['extracted_images_data']['files_counter']
+                __extractMOV_Results__[2] = __State_List__['extracted_images']
+                __extractMOV_Results__[3] = __State_List__['extracted_images_data']['files_counter']
                 __extractMOV_Results__[4] = __State_List__['extracted_images_data']['limit_counter']
-                __extractMOV_Results__[5] = __State_List__['extracted_images_data']['limit_dir_index']
+                __extractMOV_Results__[6] = __State_List__['extracted_images_data']['limit_dir_index']
 
                 # Debug output
                 if not quietEnabled():
@@ -824,7 +851,7 @@ def main(argv):
             else:
 
                 # Initialize default value
-                __extractMOV_Results__[4] = __Max_Files__
+                __extractMOV_Results__[5] = __Max_Files__
 
     # Arguments checking
     if not __Input__:
@@ -937,7 +964,7 @@ def main(argv):
         ShowMessage("Filtering images...")
 
         # Start image filtering
-        filterImages(__Output__, __Trash__, __extractMOV_Results__)
+        __Filtered_Images__ = filterImages(__Output__, __Trash__, __extractMOV_Results__)
 
     # Generate KML if not in counting mode
     if __Count_Images__ == 0:
@@ -946,7 +973,7 @@ def main(argv):
             ShowMessage("Generating KML file...")
 
         # Generate KML file
-        generateKML(__Output__, __KMLBase__)
+        generateKML(__Output__, __KMLBase__, __Filtered_Images__)
 
     # Debug output
     if not quietEnabled() and __Count_Images__ != 0:
