@@ -791,6 +791,7 @@ def main(argv):
         elif o in ("-m", "--maxfiles"):
             __Max_Files__  = int(a)
             __extractMOV_Results__[4] = __Max_Files__
+            __extractMOV_Results__[5] = __Max_Files__
         elif o in ("-k", "--kmlbase"):
             __KMLBase__  = a.rstrip('/')
         elif o in ("-s", "--state"):
@@ -842,16 +843,12 @@ def main(argv):
                 # Restore variables
                 __extractMOV_Results__[2] = __State_List__['extracted_images']
                 __extractMOV_Results__[3] = __State_List__['extracted_images_data']['files_counter']
-                __extractMOV_Results__[4] = __State_List__['extracted_images_data']['limit_counter']
+                __extractMOV_Results__[5] = __State_List__['extracted_images_data']['limit_counter']
                 __extractMOV_Results__[6] = __State_List__['extracted_images_data']['limit_dir_index']
 
                 # Debug output
                 if not quietEnabled():
                     ShowMessage("State files loaded")
-            else:
-
-                # Initialize default value
-                __extractMOV_Results__[5] = __Max_Files__
 
     # Arguments checking
     if not __Input__:
