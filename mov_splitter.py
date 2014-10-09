@@ -716,7 +716,7 @@ def _usage():
     Usage: %s [OPTIONS]
 
     [Required arguments]
-    -f --folder         Base working folder (where mov, jp4, trash are)
+    -f --folder         Base working folder (where mov folder are)
     [and/or]
     -i --input          Input MOV folder
     -o --output         Output JP4 folder
