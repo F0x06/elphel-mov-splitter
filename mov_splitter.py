@@ -661,6 +661,16 @@ def generateKML(Input, BaseURL, Results):
         if int(parts[len(parts)-1]) == 1:
             List.append("%s/%s.jp4" % (Input, i))
 
+    # Sort list
+    List = sorted(List)
+
+    if len(List) <= 0:
+        ShowMessage("Nothing to generate", 1)
+        return
+
+    if not quietEnabled():
+        ShowMessage("Generating %d entries..." % len(List))
+
     # Walk over files
     for f in List:
 
@@ -967,7 +977,7 @@ def main(argv):
     if __Count_Images__ == 0:
         # Debug output
         if not quietEnabled():
-            ShowMessage("Generating KML file...")
+            ShowMessage("Starting KML file generation...")
 
         # Generate KML file
         generateKML(__Output__, __KMLBase__, __Filtered_Images__)
