@@ -93,6 +93,9 @@ NO_COLORS  = 0
 NO_FILTER  = 0
 QUIET_MODE = 0
 LOG_FILE   = ""
+STATE_FILE_MOV = None
+STATE_FILE_JP4 = None
+STATE_FILE_OPTIONS = None
 
 # MOV file container class
 class MovFile:
@@ -186,19 +189,59 @@ def LoadState(File):
         sys.stdout.write("Loading state file...\r")
         sys.stdout.flush()
 
-    # Variables
-    List = {}
+    # Variable to load data on it
+    List = {
+        'extracted_movs':   [],    # Extracted movs
+        'extracted_images': [],    # Extracted images
+        'extracted_images_data': { # Extracted images data
+            'files_counter': 0,    # Extracted files count
+            'limit_counter': 0,    # File limit counter
+            'limit_dir_index': 0   # File limit dir index
+        }
+    }
 
-    # Open file, and load array
-    with open(File, 'r') as f:
-        List = json.loads(f.read())
+    # Load mov paths
+    for line in open( "%s/mov.dat" % File, "r" ):
+        if not '#' in line[0]:
+            List['extracted_movs'].append(line[:-1])
 
-    # Return the result
+    # Load JP4 paths
+    for line in open( "%s/jp4.dat" % File, "r" ):
+        if not '#' in line[0]:
+            List['extracted_images'].append(line[:-1])
+
+    # Load options
+    f = open("%s/options.dat" % File, "r")
+    lines = f.readlines()
+
+    List['extracted_images_data']['files_counter']   = int(lines[1][:-1])
+    List['extracted_images_data']['limit_counter']   = int(lines[2][:-1])
+    List['extracted_images_data']['limit_dir_index'] = int(lines[3][:-1])
+
+    f.close()
+
+    # Return result
     return List
 
 # Write extracted MOV's to a file
 @timed
-def SaveState(File, List, moventry, imagedata):
+def SaveState(Folder, moventry, imagedata):
+    global STATE_FILE_MOV, STATE_FILE_JP4
+
+    # Check if files are openned, if not open it
+    if not STATE_FILE_MOV or not STATE_FILE_JP4:
+
+        # Check if files exists before creation
+        Exists = 0
+        if os.path.isfile("%s/mov.dat" % Folder) and os.path.isfile("%s/jp4.dat" % Folder): Exists = 1
+
+        STATE_FILE_MOV = open("%s/mov.dat" % Folder, 'a+')
+        STATE_FILE_JP4 = open("%s/jp4.dat" % Folder, 'a+')
+
+        # If files are new, insert default header
+        if not Exists:
+            STATE_FILE_MOV.write("# Elphel-mov-splitter MOV state file #\n")
+            STATE_FILE_JP4.write("# Elphel-mov-splitter JP4 state file #\n")
 
     # Debug output
     if not quietEnabled():
@@ -206,23 +249,19 @@ def SaveState(File, List, moventry, imagedata):
         sys.stdout.write("Saving state file...\r")
         sys.stdout.flush()
 
-    # Insert MOV path into array if not present
-    if not moventry in List['extracted_movs']:
-        List['extracted_movs'].append(moventry)
+    # Write MOV path into file
+    STATE_FILE_MOV.write("%s\n" % moventry)
 
-    # Put extracted images into array
+    # Write extracted images into file
     for item in imagedata[1]:
-        if not item in List['extracted_images']:
-            List['extracted_images'].append(item)
+        STATE_FILE_JP4.write("%s\n" % item)
 
-    # Put settings variables into array
-    List['extracted_images_data']['limit_counter']   = imagedata[4]
-    List['extracted_images_data']['limit_dir_index'] = imagedata[5]
-    List['extracted_images_data']['files_counter']     = imagedata[2]
-
-    # Save array to file
-    with open(File, 'w') as f:
-        f.write( json.dumps(List, sort_keys=True, indent=4, separators=(',', ': ')) )
+    # Write options to file
+    with open("%s/options.dat" % Folder, 'w+') as f:
+        f.write("# Elphel-mov-splitter options state file #\n")
+        f.write("%s\n" % imagedata[2])
+        f.write("%s\n" % imagedata[4])
+        f.write("%s\n" % imagedata[5])
 
 # Function to find all occurences of a given input
 @timed
@@ -652,7 +691,7 @@ def _usage():
     -c --count          Don't extract MOV files, just count images
     -m --maxfiles       Max JP4 files per folder, will create folders 0, 1, 2, 3 to place next files
     -k --kmlbase        KML base url
-    -s --state          State file to save/resume job
+    -s --state          State files folder (to save/resume job)
     -l --logfile        Log file path
     -f --nofilter       Don't filter images (trashing)
 
@@ -673,7 +712,7 @@ def main(argv):
     __Count_Images__ = 0
     __Max_Files__    = 0
     __KMLBase__      = "__BASE__URL__"
-    __State_File__   = ""
+    __State_Dir__   = ""
 
     # Scope variables initialisation
     __MOV_List__           = []
@@ -728,7 +767,7 @@ def main(argv):
         elif o in ("-k", "--kmlbase"):
             __KMLBase__  = a.rstrip('/')
         elif o in ("-s", "--state"):
-            __State_File__  = a
+            __State_Dir__  = a
         elif o in ("-d", "--debug"):
             global DEBUG_MODE
             DEBUG_MODE = 1
@@ -757,24 +796,35 @@ def main(argv):
     if __Trash__ and not os.path.isdir(__Trash__):
         os.makedirs(__Trash__)
 
-    # Check if state file exists, if exists load it
-    if os.path.isfile(__State_File__):
+    # Check if state file option is specified
+    if __State_Dir__:
 
-        # Load state file
-        __State_List__ = LoadState(__State_File__)
+        # Check presense of state folder
+        if not os.path.isdir(__State_Dir__):
 
-        # Restore variables
-        __extractMOV_Results__[1] = __State_List__['extracted_images']
-        __extractMOV_Results__[2] = __State_List__['extracted_images_data']['files_counter']
-        __extractMOV_Results__[4] = __State_List__['extracted_images_data']['limit_counter']
-        __extractMOV_Results__[5] = __State_List__['extracted_images_data']['limit_dir_index']
+            # Create folder
+            os.makedirs(__State_Dir__)
+        else:
 
-        # Debug output
-        if not quietEnabled():
-            ShowMessage("State file loaded")
+            # Check presence of state files
+            if os.path.isfile("%s/mov.dat" % __State_Dir__) and os.path.isfile("%s/jp4.dat" % __State_Dir__) and os.path.isfile("%s/options.dat" % __State_Dir__):
 
-    else:
-        __extractMOV_Results__[4] = __Max_Files__
+                # Load state file
+                __State_List__ = LoadState(__State_Dir__)
+
+                # Restore variables
+                __extractMOV_Results__[1] = __State_List__['extracted_images']
+                __extractMOV_Results__[2] = __State_List__['extracted_images_data']['files_counter']
+                __extractMOV_Results__[4] = __State_List__['extracted_images_data']['limit_counter']
+                __extractMOV_Results__[5] = __State_List__['extracted_images_data']['limit_dir_index']
+
+                # Debug output
+                if not quietEnabled():
+                    ShowMessage("State files loaded")
+            else:
+
+                # Initialize default value
+                __extractMOV_Results__[4] = __Max_Files__
 
     # Arguments checking
     if not __Input__:
@@ -801,7 +851,7 @@ def main(argv):
         __MOV_List__.append(Movs)
 
     # Check if all MOVS are extracted when state file is specified
-    if __State_File__:
+    if __State_Dir__:
 
         # Result value
         Finished = 1
@@ -858,8 +908,8 @@ def main(argv):
                 __extractMOV_Results__ = extractMOV(MOV.path, __Output__, __Trash__, MOV.module, __extractMOV_Results__)
 
                 # Save state (used to resume process)
-                if __State_File__:
-                    SaveState(__State_File__, __State_List__, MOV.path, __extractMOV_Results__)
+                if __State_Dir__:
+                    SaveState(__State_Dir__, MOV.path, __extractMOV_Results__)
 
             else:
 
