@@ -76,7 +76,7 @@ KML_Entry = \
         <roll>%d</roll>
     </Camera>
     <Icon>
-        <href>%s/%s</href>
+        <href>%s</href>
     </Icon>
 </PhotoOverlay>
 """
@@ -475,7 +475,7 @@ def getTimeStamps(Output):
 
 # Function to move all incomplete sequences to __Trash__ folder, a complete sequence need to be 1-9
 @timed
-def filterImages(Output, Trash, Results):
+def filterImages(Output, Trash, Results, StateDir):
 
     # Variable to store images informations
     TSList = {}
@@ -580,7 +580,16 @@ def filterImages(Output, Trash, Results):
                 else:
                     ValidatedImages.append("%s_%s" % (ts, i))
 
-    # Return result
+    ValidatedImages = sorted(ValidatedImages)
+
+    # Write results to file if state dir is specified
+    if StateDir:
+        with open("%s/filtered.dat" % StateDir, 'w+') as f:
+            f.write("# Elphel-mov-splitter filtered images list #\n")
+            for i in ValidatedImages:
+                f.write("%s\n" % i)
+
+    # Return sorted result
     return ValidatedImages
 
 # Function to convert a fractioned EXIF array into degrees
@@ -661,10 +670,7 @@ def generateKML(Input, BaseURL, Results):
     for i in Results:
         parts = i.split('_')
         if int(parts[len(parts)-1]) == 1:
-            List.append("%s/%s.jp4" % (Input, i))
-
-    # Sort list
-    List = sorted(List)
+            List.append("%s.jp4" % (i))
 
     if len(List) <= 0:
         ShowMessage("Nothing to generate", 1)
@@ -676,8 +682,21 @@ def generateKML(Input, BaseURL, Results):
     # Walk over files
     for f in List:
 
+        # Determine base path
+        BasePath = ""
+
+        # Split base path
+        segs = f.split('/')
+
+        # Check base path presence, and calculate apropriate result
+        if len(segs) > 1:
+            BasePath = "%s/%s/%s" % (BaseURL, segs[0], segs[1])
+        else:
+            BasePath = "%s/%s" % (BaseURL, f)
+
+
         # Open image and extract EXIF data
-        Image = open(f, "rb")
+        Image = open("%s/%s" % (Input, f), "rb")
         EXIFData = exifread.process_file(Image)
         Image.close()
 
@@ -704,7 +723,7 @@ def generateKML(Input, BaseURL, Results):
             Roll = (-1 if (EXIFData['GPS GPSDestLongitudeRef'] == "W") else 1) * array2degrees(EXIFData['GPS GPSDestLongitude'])
 
         # Write KML entry
-        KML_File.write(KML_Entry % (Longitude, Latitude, "{0:.1f}".format(Altitude), Heading, Tilt, Roll, BaseURL, os.path.split(f)[1]))
+        KML_File.write(KML_Entry % (Longitude, Latitude, "{0:.1f}".format(Altitude), Heading, Tilt, Roll, BasePath))
 
     # Write KML footer
     KML_File.write(KML_Footer)
@@ -999,7 +1018,7 @@ def main(argv):
         ShowMessage("Filtering images...")
 
         # Start image filtering
-        __Filtered_Images__ = filterImages(__Output__, __Trash__, __extractMOV_Results__)
+        __Filtered_Images__ = filterImages(__Output__, __Trash__, __extractMOV_Results__, __State_Dir__)
 
     # Generate KML if not in counting mode
     if __Count_Images__ == 0:
