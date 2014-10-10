@@ -569,7 +569,7 @@ def filterImages(Output, Trash, Results, StateDir):
                     shutil.move(SourceFile, DestFile)
         else:
             # Iterate over possible modules
-            for i in range(1, 9):
+            for i in range(1, 10):
 
                 # Get base folder
                 folder = TSList[ts][i]
