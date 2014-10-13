@@ -1,6 +1,5 @@
 ## Copyright
-
-elphel-parallel-processing - Elphel camera array images post processing using GNU parallel<br />
+elphel-mov-splitter - Elphel MOV to jp4 splitter<br />
 This program is part of the FOXEL project <[http://foxel.ch](http://foxel.ch)>.
 
 Copyright (c) 2014 FOXEL SA - [http://foxel.ch](http://foxel.ch)<br />
