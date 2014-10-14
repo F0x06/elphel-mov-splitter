@@ -101,6 +101,19 @@ class MovFile:
         self.path = path
         self.module = int(modulename)
 
+# JP4 file container class
+class JP4Image:
+    def __init__(self, timestamp, module, base_folder=-1):
+        self.timestamp = timestamp
+        self.module = int(module)
+        self.base_folder = int(base_folder)
+
+        # Compute default path
+        if self.base_folder != -1:
+            self.path = "%s/%s_%s" % (base_folder, timestamp, module)
+        else:
+            self.path = "%s_%s" % (timestamp, module)
+
 # Function to print debug messages
 def ShowMessage(Message, Type=0, Halt=0):
 
@@ -576,21 +589,59 @@ def filterImages(Output, Trash, Results, StateDir):
 
                 # Check presence of base folder
                 if folder != -1:
-                    ValidatedImages.append("%s/%s_%s" % (TSList[ts][i], ts, i))
+                    ValidatedImages.append( JP4Image(ts, i, TSList[ts][i]) )
                 else:
-                    ValidatedImages.append("%s_%s" % (ts, i))
-
-    ValidatedImages = sorted(ValidatedImages)
+                    ValidatedImages.append( JP4Image(ts, i, -1) )
+    # Sort images
+    ValidatedImages = sorted(ValidatedImages, key=lambda item: item.timestamp)
 
     # Write results to file if state dir is specified
     if StateDir:
         with open("%s/filtered.dat" % StateDir, 'w+') as f:
             f.write("# Elphel-mov-splitter filtered images list #\n")
-            for i in ValidatedImages:
-                f.write("%s\n" % i)
+            for image in ValidatedImages:
+                f.write("%s\n" % image.path)
 
     # Return sorted result
     return ValidatedImages
+
+# Function to rearange images into full modules sets
+def rearrangeImages(Folder, Images, Output, Limit):
+
+    # Scope variables
+    Counter = 0
+    Folder_Index = 0
+    Limit_Counter = Limit
+    Arranged_List = []
+
+    # Iterate over images
+    for image in Images:
+
+        # Compute output directory
+        OutDir = '%s/../%s' % (Output, Folder_Index)
+
+        # Create output directory if not exists
+        if not os.path.isdir(OutDir):
+            os.makedirs(OutDir)
+
+        # Compute source file name
+        SourceFile = '%s/%s.jp4' % (Folder, image.path)
+
+        # If file exists move it
+        if os.path.isfile(SourceFile):
+            shutil.move(SourceFile, '%s/%s_%d.jp4' % (OutDir, image.timestamp, image.module))
+            Arranged_List.append( JP4Image(image.timestamp, image.module, Folder_Index) )
+
+        # Increment index
+        Counter += 1
+
+        # Check file limit
+        if Counter > Limit_Counter and (Counter % 9 == 0):
+            Limit_Counter += Limit
+            Folder_Index += 1
+
+    # Return result
+    return Arranged_List
 
 # Function to convert a fractioned EXIF array into degrees
 def array2degrees(dms):
@@ -667,10 +718,9 @@ def generateKML(Input, BaseURL, Results):
 
     # Build a list with only module 1
     List = []
-    for i in Results:
-        parts = i.split('_')
-        if int(parts[len(parts)-1]) == 1:
-            List.append("%s.jp4" % (i))
+    for image in Results:
+        if image.module == 1:
+            List.append("%s.jp4" % (image.path))
 
     if len(List) <= 0:
         ShowMessage("Nothing to generate", 1)
@@ -871,12 +921,19 @@ def main(argv):
         if Trash:
             __Trash__ = Trash
 
+    # Append temp folder to output path
+    if __Max_Files__ != 0:
+        __Output__ = ("%s/temp" % __Output__)
+
     # Create default directories
     if __Output__ and not os.path.isdir(__Output__):
         os.makedirs(__Output__)
 
-    if __Max_Files__ != 0 and __Output__ and not os.path.isdir("%s/0" % __Output__):
-        os.makedirs("%s/0" % (__Output__))
+        if __Max_Files__ != 0:
+            os.makedirs('%s/0' % __Output__)
+
+    if __Output__ and not os.path.isdir(__Output__):
+        os.makedirs(__Output__)
 
     if __Trash__ and not os.path.isdir(__Trash__):
         os.makedirs(__Trash__)
@@ -1020,6 +1077,26 @@ def main(argv):
         # Start image filtering
         __Filtered_Images__ = filterImages(__Output__, __Trash__, __extractMOV_Results__, __State_Dir__)
 
+    # Check presence of max files option
+    if __Max_Files__ != 0:
+
+        # Clamp max files to 9
+        if __Max_Files__ < 9:
+            __Max_Files__ = 9
+
+        # Convert limit to a power of 9
+        Limit = (__Max_Files__ / 9) * 9
+
+        # Debug output
+        ShowMessage("Rearranging images...")
+
+        # Rearrange images
+        __Aranged_Images__ = rearrangeImages(__Output__, __Filtered_Images__, __Output__, Limit)
+    else:
+
+        # Just assign old list to new one
+        __Aranged_Images__ = __Filtered_Images__
+
     # Generate KML if not in counting mode
     if __Count_Images__ == 0:
         # Debug output
@@ -1027,7 +1104,14 @@ def main(argv):
             ShowMessage("Starting KML file generation...")
 
         # Generate KML file
-        generateKML(__Output__, __KMLBase__, __Filtered_Images__)
+        if __Max_Files__ != 0:
+            generateKML('%s/..' % __Output__, __KMLBase__, __Aranged_Images__)
+        else:
+            generateKML(__Output__, __KMLBase__, __Aranged_Images__)
+
+    # Remove temp folder
+    if __Max_Files__ != 0:
+        shutil.rmtree(__Output__)
 
     # Debug output
     if not quietEnabled() and __Count_Images__ != 0:
