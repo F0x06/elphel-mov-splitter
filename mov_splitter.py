@@ -44,12 +44,13 @@ import datetime
 import getopt
 import glob
 import os
+import Queue
 import shutil
 import signal
 import string
 import sys
+import threading
 import time
-import traceback
 from cStringIO import StringIO
 from datetime import datetime
 from functools import wraps
@@ -57,6 +58,10 @@ from functools import wraps
 import exifread
 
 # Global variables
+QUEUE_Done     = 0
+QUEUE_Count    = 0
+QUEUE_Slots    = []
+CAMERA_MODULES = 9
 
 # KML file header
 KML_Header = \
@@ -92,8 +97,6 @@ NO_COLORS  = 0
 NO_FILTER  = 0
 QUIET_MODE = 0
 LOG_FILE   = ""
-STATE_FILE_MOV = None
-STATE_FILE_JP4 = None
 
 # MOV file container class
 class MovFile:
@@ -103,19 +106,26 @@ class MovFile:
 
 # JP4 file container class
 class JP4Image:
-    def __init__(self, timestamp, module, base_folder=-1):
+    def __init__(self, timestamp, module, base_folder=-1, threadid=-1):
         self.timestamp = timestamp
         self.module = int(module)
         self.base_folder = int(base_folder)
+        self.threadid = threadid
 
         # Compute default path
         if self.base_folder != -1:
-            self.path = "%s/%s_%s" % (base_folder, timestamp, module)
+            if threadid != -1:
+                self.path = "%s/%s/%s_%s" % (threadid, base_folder, timestamp, module)
+            else:
+                self.path = "%s/%s_%s" % (base_folder, timestamp, module)
         else:
-            self.path = "%s_%s" % (timestamp, module)
+            if threadid != -1:
+                self.path = "%s/%s_%s" % (threadid, timestamp, module)
+            else:
+                self.path = "%s_%s" % (timestamp, module)
 
 # Function to print debug messages
-def ShowMessage(Message, Type=0, Halt=0):
+def ShowMessage(Message, Type=0, Halt=0, ThreadID=-1):
 
     # Flush stdout
     sys.stdout.flush()
@@ -123,32 +133,37 @@ def ShowMessage(Message, Type=0, Halt=0):
     # Get current date
     DateNow = datetime.now().strftime("%H:%M:%S")
 
+    # Display proper message
+    Prepend = ""
+
+    if ThreadID != -1:
+        Prepend = "[Thread %d]" % (ThreadID+1)
+
     # Write to log file
     if len(LOG_FILE) > 0:
         with open(LOG_FILE, "a+") as logFile:
-            logFile.write("%s [INFO] %s\n" % (DateNow, Message))
+            logFile.write("%s %s[INFO] %s\n" % (DateNow, Prepend, Message))
 
-    # Display proper message
     if Type == 0:
         if NO_COLORS:
-            sys.stdout.write("%s [INFO] %s\n" % (DateNow, Message))
+            sys.stdout.write("%s %s[INFO] %s\n" % (DateNow, Prepend, Message))
         else:
-            sys.stdout.write("%s \033[32m[INFO]\033[39m %s\n" % (DateNow, Message))
+            sys.stdout.write("%s \033[32m%s[INFO]\033[39m %s\n" % (DateNow, Prepend, Message))
     elif Type == 1:
         if NO_COLORS:
-            sys.stdout.write("%s [WARNING] %s\n" % (DateNow, Message))
+            sys.stdout.write("%s %s[WARNING] %s\n" % (DateNow, Prepend, Message))
         else:
-            sys.stdout.write("%s \033[33m[WARNING]\033[39m %s\n" % (DateNow, Message))
+            sys.stdout.write("%s \033[33m%s[WARNING]\033[39m %s\n" % (DateNow, Prepend, Message))
     elif Type == 2:
         if NO_COLORS:
-            sys.stdout.write("%s [ERROR] %s\n" % (DateNow, Message))
+            sys.stdout.write("%s %s[ERROR] %s\n" % (DateNow, Prepend, Message))
         else:
-            sys.stdout.write("%s \033[31m[ERROR]\033[39m %s\n" % (DateNow, Message))
+            sys.stdout.write("%s \033[31m%s[ERROR]\033[39m %s\n" % (DateNow, Prepend, Message))
     elif Type == 3:
         if NO_COLORS:
-            sys.stdout.write("%s [DEBUG] %s\n" % (DateNow, Message))
+            sys.stdout.write("%s %s[DEBUG] %s\n" % (DateNow, Prepend, Message))
         else:
-            sys.stdout.write("%s \033[34m[DEBUG]\033[39m %s\n" % (DateNow, Message))
+            sys.stdout.write("%s \033[34m%s[DEBUG]\033[39m %s\n" % (DateNow, Prepend, Message))
 
     # Flush stdout
     sys.stdout.flush()
@@ -190,92 +205,6 @@ def timed(f):
 def quietEnabled():
     return QUIET_MODE
 
-# Read extracted MOV's from file
-@timed
-def LoadState(Folder):
-
-    # Debug output
-    if not quietEnabled():
-        sys.stdout.flush()
-        sys.stdout.write("Loading state file...\r")
-        sys.stdout.flush()
-
-    # Variable to load data on it
-    List = {
-        'extracted_movs':   [],    # Extracted movs
-        'extracted_images': [],    # Extracted images
-        'extracted_images_data': { # Extracted images data
-            'files_counter': 0,    # Extracted files count
-            'limit_counter': 0,    # File limit counter
-            'limit_dir_index': 0   # File limit dir index
-        }
-    }
-
-    # Load mov paths
-    for line in open( "%s/mov.dat" % Folder, "r" ):
-        if not '#' in line[0]:
-            List['extracted_movs'].append(line[:-1])
-
-    # Load JP4 paths
-    for line in open( "%s/jp4.dat" % Folder, "r" ):
-        if not '#' in line[0]:
-            List['extracted_images'].append(line[:-1])
-
-    # Load options
-    f = open("%s/options.dat" % Folder, "r")
-    lines = f.readlines()
-
-    List['extracted_images_data']['files_counter']   = int(lines[1][:-1])
-    List['extracted_images_data']['limit_counter']   = int(lines[2][:-1])
-    List['extracted_images_data']['limit_dir_index'] = int(lines[3][:-1])
-
-    f.close()
-
-    # Return result
-    return List
-
-# Write extracted MOV's to a file
-@timed
-def SaveState(Folder, moventry, imagedata):
-    global STATE_FILE_MOV, STATE_FILE_JP4
-
-    # Check if files are openned, if not open it
-    if not STATE_FILE_MOV or not STATE_FILE_JP4:
-
-        # Check if files exists before creation
-        Exists = 0
-        if os.path.isfile("%s/mov.dat" % Folder) and os.path.isfile("%s/jp4.dat" % Folder): Exists = 1
-
-        STATE_FILE_MOV = open("%s/mov.dat" % Folder, 'a+')
-        STATE_FILE_JP4 = open("%s/jp4.dat" % Folder, 'a+')
-
-        # If files are new, insert default header
-        if not Exists:
-            STATE_FILE_MOV.write("# Elphel-mov-splitter MOV state file #\n")
-            STATE_FILE_JP4.write("# Elphel-mov-splitter JP4 state file #\n")
-
-    # Debug output
-    if not quietEnabled():
-        sys.stdout.flush()
-        sys.stdout.write("Saving state file...\r")
-        sys.stdout.flush()
-
-    # Write MOV path into file
-    STATE_FILE_MOV.write("%s\n" % moventry)
-    STATE_FILE_MOV.flush()
-
-    # Write extracted images into file
-    for item in imagedata[1]:
-        STATE_FILE_JP4.write("%s\n" % item)
-    STATE_FILE_JP4.flush()
-
-    # Write options to file
-    with open("%s/options.dat" % Folder, 'w+') as f:
-        f.write("# Elphel-mov-splitter options state file #\n")
-        f.write("%s\n" % imagedata[3])
-        f.write("%s\n" % imagedata[5])
-        f.write("%s\n" % imagedata[6])
-
 # Function to find all occurences of a given input
 @timed
 def find_all(a_str, sub):
@@ -295,16 +224,10 @@ def find_all(a_str, sub):
 
 # Function to count JPEG images inside a MOV file
 @timed
-def countMOV(InputFile):
+def countMOV(InputFile, tid):
 
     # Local variables
     JPEGHeader    = b'\xff\xd8\xff\xe1'
-
-    # Open input MOV file
-    if not quietEnabled():
-        sys.stdout.flush()
-        sys.stdout.write("Loading MOV file...\r")
-        sys.stdout.flush()
 
     mov = open(InputFile, 'rb')
     mov_data = mov.read()
@@ -315,7 +238,7 @@ def countMOV(InputFile):
     JPEG_Offsets_len = len(JPEG_Offsets)
 
     # Variable to store results
-    Result = [0, 0]
+    Result = [0, 0, tid]
 
     # Store images count
     Result[0] = JPEG_Offsets_len
@@ -335,19 +258,21 @@ def countMOV(InputFile):
     # Return result
     return Result
 
+# Thread function to count MOV files
+def countMOV_Thread(Threads, InputFile, tid):
+
+    # Add action to queue
+    Threads.put(
+        countMOV(InputFile, tid)
+    )
+
 # Function to extract JPEG images inside a MOV file
 @timed
-def extractMOV(InputFile, OutputFolder, TrashFolder, ModuleName, Results_back):
+def extractMOV(tid, InputFile, OutputFolder, TrashFolder, ModuleName, Results_back):
 
     # Local variables
     JPEGHeader    = b'\xff\xd8\xff\xe1'
     Results       = [0, []]
-
-    # Open input MOV file
-    if not quietEnabled():
-        sys.stdout.flush()
-        sys.stdout.write("Loading MOV file...\r")
-        sys.stdout.flush()
 
     mov = open(InputFile, 'rb')
     mov_data = mov.read()
@@ -356,6 +281,7 @@ def extractMOV(InputFile, OutputFolder, TrashFolder, ModuleName, Results_back):
     # Initialize results counter
     Results = Results_back
     Results[1] = []
+    Results[2] = []
 
     # Search all JPEG files inside the MOV file
     JPEG_Offsets     = list(find_all(mov_data, JPEGHeader))
@@ -365,13 +291,12 @@ def extractMOV(InputFile, OutputFolder, TrashFolder, ModuleName, Results_back):
     if JPEG_Offsets_len == 0:
         ShowMessage("No JPEG headers found in MOV file %s" % InputFile, 1)
 
+    if Results[4] != 0:
+        if not os.path.isdir("%s/0" % OutputFolder):
+            os.makedirs("%s/0" % OutputFolder)
+
     # Walk over JPEG files positions
     for _Index, _Offset in enumerate(JPEG_Offsets):
-
-        # Display progress
-        if not quietEnabled():
-            sys.stdout.write("Extracting %d/%d\r" % (_Index, JPEG_Offsets_len - 1))
-            sys.stdout.flush()
 
         # Calculate the filesize for extraction
         if (_Index >= len(JPEG_Offsets) - 1):
@@ -395,7 +320,7 @@ def extractMOV(InputFile, OutputFolder, TrashFolder, ModuleName, Results_back):
         if len(EXIF_Tags) <= 0:
 
             # Print error
-            ShowMessage("Failed to read EXIF data", 1)
+            ShowMessage("Failed to read EXIF data", 1, 0, tid)
 
             # Calculate filename
             Output_Name = "fail_%d_exif" % (Results[0])
@@ -404,7 +329,7 @@ def extractMOV(InputFile, OutputFolder, TrashFolder, ModuleName, Results_back):
             Output_Image = open('%s/%s.jp4' % (TrashFolder, Output_Name), 'wb')
 
             # Print error
-            ShowMessage("Saving image to %s/%s.jp4" % (TrashFolder, Output_Name), 1)
+            ShowMessage("Saving image to %s/%s.jp4" % (TrashFolder, Output_Name), 1, 0, tid)
 
             # Increment fail counter
             Results[0] += 1
@@ -439,7 +364,7 @@ def extractMOV(InputFile, OutputFolder, TrashFolder, ModuleName, Results_back):
                     OutDir = "%s/%s" % (OutputFolder, Results[6])
 
                     # Notify user about directory change
-                    ShowMessage("Directory changed to %s due to files limit" % OutDir)
+                    ShowMessage("Directory changed to %s due to files limit" % (OutDir), 0, 0, tid)
 
                     # Create directory if not exists
                     if not os.path.isdir(OutDir):
@@ -447,11 +372,11 @@ def extractMOV(InputFile, OutputFolder, TrashFolder, ModuleName, Results_back):
 
             # Add timestamp to list
             if Results[4] != 0:
-                Results[1].append("%d/%s" % (Results[6], Output_Name))
-                Results[2].append("%d/%s" % (Results[6], Output_Name))
+                Results[1].append("t%d/%d/%s" % (Results[7], Results[6], Output_Name))
+                Results[2].append("t%d/%d/%s" % (Results[7], Results[6], Output_Name))
             else:
-                Results[1].append(Output_Name)
-                Results[2].append(Output_Name)
+                Results[1].append("t%d/%s" % (Results[7], Output_Name))
+                Results[2].append("t%d/%s" % (Results[7], Output_Name))
 
             # Open output file
             Output_Image = open('%s/%s.jp4' % (OutDir, Output_Name), 'wb')
@@ -461,6 +386,21 @@ def extractMOV(InputFile, OutputFolder, TrashFolder, ModuleName, Results_back):
         Output_Image.close()
 
     return Results
+
+# Thread function to extract MOV files
+def extractMOV_Thread(tid, Threads, InputFile, OutputFolder, TrashFolder, ModuleName, Results_back):
+
+    # Add action to queue
+    Threads.put(
+        extractMOV(
+            tid,
+            InputFile,
+            OutputFolder,
+            TrashFolder,
+            ModuleName,
+            Results_back
+        )
+    )
 
 # Function to retrieve each timestamps into an array of strings
 @timed
@@ -488,7 +428,7 @@ def getTimeStamps(Output):
 
 # Function to move all incomplete sequences to __Trash__ folder, a complete sequence need to be 1-9
 @timed
-def filterImages(Output, Trash, Results, StateDir):
+def filterImages(Output, Trash, Results):
 
     # Variable to store images informations
     TSList = {}
@@ -501,10 +441,10 @@ def filterImages(Output, Trash, Results, StateDir):
         seg = elem.split('/')
 
         # Check presense of base folder
-        if len(seg) > 1:
+        if len(seg) > 2:
 
             # Extract parts (timestamp, microsec, module)
-            parts = seg[1].split('_')
+            parts = seg[2].split('_')
 
             # Build timestamp without module
             ts = "%s_%s" % (parts[0], parts[1])
@@ -515,12 +455,12 @@ def filterImages(Output, Trash, Results, StateDir):
 
             # Insert module and base folder to list if module not exists
             if not parts[2] in TSList[ts]:
-                TSList[ ts ][ int(parts[2]) ] = int(seg[0])
+                TSList[ ts ][ int(parts[2]) ] = [seg[0], int(seg[1])]
 
         else:
 
             # Extract parts (timestamp, microsec, module)
-            parts = seg[0].split('_')
+            parts = seg[1].split('_')
 
             # Build timestamp without module
             ts = "%s_%s" % (parts[0], parts[1])
@@ -531,7 +471,7 @@ def filterImages(Output, Trash, Results, StateDir):
 
             # Insert module into list if module not exists
             if not parts[2] in TSList[ts]:
-                TSList[ts][int(parts[2])] = -1
+                TSList[ts][int(parts[2])] = [seg[0], -1]
 
     # Walk over paths
     for ts in TSList:
@@ -540,7 +480,7 @@ def filterImages(Output, Trash, Results, StateDir):
         Missing_Modules = []
 
         # Walk over modules range 1-9
-        for i in range(1, 10):
+        for i in range(1, CAMERA_MODULES + 1):
 
             # Check if module exists
             if not(i in TSList[ts]):
@@ -552,7 +492,7 @@ def filterImages(Output, Trash, Results, StateDir):
         if len(Missing_Modules) > 0:
 
             # Calculate modules to be removed
-            ToRemove = [x for x in range(1, 10) if x not in Missing_Modules]
+            ToRemove = [x for x in range(1, CAMERA_MODULES + 1) if x not in Missing_Modules]
 
             # Debug output
             if not quietEnabled():
@@ -562,13 +502,13 @@ def filterImages(Output, Trash, Results, StateDir):
             for m in ToRemove:
 
                 # Get subfolder (if not set is -1)
-                SubFolder = TSList[ts][m]
+                SubFolder = TSList[ts][m][1]
 
                 # Check presense of subfolder and calculate source file name
                 if SubFolder != -1:
-                    SourceFile = "%s/%s/%s_%s.jp4" % (Output, TSList[ts][m], ts, m)
+                    SourceFile = "%s/%s/%s/%s_%s.jp4" % (Output, TSList[ts][m][0], TSList[ts][m][1], ts, m)
                 else:
-                    SourceFile = "%s/%s_%s.jp4" % (Output, ts, m)
+                    SourceFile = "%s/%s/%s_%s.jp4" % (Output, TSList[ts][m][0], ts, m)
 
                 # Calculate destination file name
                 DestFile   = "%s/%s_%s.jp4" % (Trash, ts, m)
@@ -582,25 +522,18 @@ def filterImages(Output, Trash, Results, StateDir):
                     shutil.move(SourceFile, DestFile)
         else:
             # Iterate over possible modules
-            for i in range(1, 10):
+            for i in range(1, CAMERA_MODULES + 1):
 
                 # Get base folder
-                folder = TSList[ts][i]
+                folder = TSList[ts][i][1]
 
                 # Check presence of base folder
                 if folder != -1:
-                    ValidatedImages.append( JP4Image(ts, i, TSList[ts][i]) )
+                    ValidatedImages.append( JP4Image(ts, i, TSList[ts][i][1], TSList[ts][i][0]) )
                 else:
-                    ValidatedImages.append( JP4Image(ts, i, -1) )
+                    ValidatedImages.append( JP4Image(ts, i, -1, TSList[ts][i][0]) )
     # Sort images
     ValidatedImages = sorted(ValidatedImages, key=lambda item: item.timestamp)
-
-    # Write results to file if state dir is specified
-    if StateDir:
-        with open("%s/filtered.dat" % StateDir, 'w+') as f:
-            f.write("# Elphel-mov-splitter filtered images list #\n")
-            for image in ValidatedImages:
-                f.write("%s\n" % image.path)
 
     # Return sorted result
     return ValidatedImages
@@ -615,30 +548,43 @@ def rearrangeImages(Folder, Images, Output, Limit):
     Arranged_List = []
 
     # Iterate over images
-    for image in Images:
+    if Limit > 0:
+        for image in Images:
 
-        # Compute output directory
-        OutDir = '%s/../%s' % (Output, Folder_Index)
+            # Compute output directory
+            OutDir = '%s/../%s' % (Output, Folder_Index)
 
-        # Create output directory if not exists
-        if not os.path.isdir(OutDir):
-            os.makedirs(OutDir)
+            # Create output directory if not exists
+            if not os.path.isdir(OutDir):
+                os.makedirs(OutDir)
 
-        # Compute source file name
-        SourceFile = '%s/%s.jp4' % (Folder, image.path)
+            # Compute source file name
+            SourceFile = '%s/%s.jp4' % (Folder, image.path)
 
-        # If file exists move it
-        if os.path.isfile(SourceFile):
-            shutil.move(SourceFile, '%s/%s_%d.jp4' % (OutDir, image.timestamp, image.module))
-            Arranged_List.append( JP4Image(image.timestamp, image.module, Folder_Index) )
+            # If file exists move it
+            if os.path.isfile(SourceFile):
+                shutil.move(SourceFile, '%s/%s_%d.jp4' % (OutDir, image.timestamp, image.module))
+                Arranged_List.append( JP4Image(image.timestamp, image.module, Folder_Index, -1) )
 
-        # Increment index
-        Counter += 1
+            # Increment index
+            Counter += 1
 
-        # Check file limit
-        if Counter > Limit_Counter and (Counter % 9 == 0):
-            Limit_Counter += Limit
-            Folder_Index += 1
+            # Check file limit
+            if Counter > Limit_Counter and (Counter % CAMERA_MODULES == 0):
+                Limit_Counter += Limit
+                Folder_Index += 1
+    else:
+        for image in Images:
+            # Compute output directory
+            OutDir = '%s/..' % (Output)
+
+            # Compute source file name
+            SourceFile = '%s/%s.jp4' % (Folder, image.path)
+
+            # If file exists move it
+            if os.path.isfile(SourceFile):
+                shutil.move(SourceFile, '%s/%s_%d.jp4' % (OutDir, image.timestamp, image.module))
+                Arranged_List.append( JP4Image(image.timestamp, image.module, -1, -1) )
 
     # Return result
     return Arranged_List
@@ -781,6 +727,257 @@ def generateKML(Input, BaseURL, Results):
     # Close KML file
     KML_File.close()
 
+# Function to merge threads results
+@timed
+def mergeResults(Source, Dest):
+
+    # Merge Fail counter
+    Dest[0] += Source[0]
+
+    # Merge Extracted files timestamps
+    for i in range(0, len(Source[1])):
+        Dest[2].append(Source[1][i])
+
+    # Merge Extracted files count
+    Dest[3] += len(Source[1])
+
+    # Merge file limit counter
+    Dest[5] += Source[5]
+
+    # Merge file limit dir index
+    Dest[6] = Source[6]
+
+# Function to get first available slot
+def GetSlot(Slots):
+
+    # Iterate over slots
+    for i in range(0, len(Slots)):
+
+        # If slot is not used return it
+        if Slots[i] == 0:
+            return i
+
+# Function to count used slots
+def UsedSlots(Slots):
+
+    # Local result variable
+    ret = 0
+
+    # Iterate over slots
+    for i in range(0, len(Slots)):
+
+        # If slot is used increment result
+        if Slots[i] == 1:
+            ret += 1
+
+    # Return result
+    return ret
+
+# MOV extraction data collector
+# pylint: disable=W0602
+@timed
+def WorkerThread_MOVCollector(Source, Dest):
+
+    # Global variables
+    global QUEUE_Done, QUEUE_Slots
+
+    # Infinite while
+    while QUEUE_Done != -1:
+
+        # Check if results queue is not empty
+        if not Source.empty():
+
+            # Retrieve the result
+            Ret = Source.get()
+
+            # Unlock thread slot
+            QUEUE_Slots[Ret[7]] = 0
+
+            # Merge results
+            mergeResults(Ret, Dest)
+
+            # Increment processed MOVs index
+            QUEUE_Done  += 1
+
+        # Wait 200ms
+        time.sleep(0.2)
+
+# MOV counting data collector
+# pylint: disable=W0602
+@timed
+def WorkerThread_CountCollector(Source, Dest):
+
+    # Global variables
+    global QUEUE_Done, QUEUE_Slots
+
+    # Infinite while
+    while QUEUE_Done != -1:
+
+        # Check if results queue is not empty
+        if not Source.empty():
+
+            # Retrieve the result
+            Ret = Source.get()
+
+            # Unlock thread slot
+            QUEUE_Slots[Ret[2]] = 0
+
+            Dest[0] += Ret[0]
+            Dest[1] += Ret[1]
+
+            # Increment processed MOVs index
+            QUEUE_Done  += 1
+
+        # Wait 200ms
+        time.sleep(0.2)
+
+# Main thread
+# pylint: disable=W0602
+@timed
+def WorkerThread(__extractMOV_Results__, __extractMOV_Results_Template__, __countMOV_Results__, __Jobs__, __Count_Images__, __Total_Files__, __MOV_List_Optimized__, __Output__, __Trash__):
+
+    # Global variables
+    global QUEUE_Done, QUEUE_Slots
+
+    # Local variables
+    __Processed_Files__ = 1
+    Threads = Queue.Queue()
+    Threads_Results = []
+
+    # Check if in counting mode
+    if __Count_Images__ == 0:
+
+        # Initialize default threads results containers
+        for i in range(0, __Jobs__):
+            Threads_Results.append(__extractMOV_Results_Template__[:])
+            QUEUE_Slots.append(0)
+
+        # Create collector thread
+        CollectorThread = threading.Thread(
+            target = WorkerThread_MOVCollector,
+            args = (Threads, __extractMOV_Results__)
+        )
+
+        # Start collector thread
+        CollectorThread.setDaemon(True)
+        CollectorThread.start()
+
+        # Loop until all MOVS are extracted
+        while QUEUE_Done < __Total_Files__:
+
+            # Insert a new item to the queue if not full
+            if (UsedSlots(QUEUE_Slots) < __Jobs__) and (len(__MOV_List_Optimized__) > 0):
+
+                # Get an available thread slot
+                Index = GetSlot(QUEUE_Slots)
+
+                # Pick one MOV file
+                MOV = __MOV_List_Optimized__[0]
+
+                # Debug output
+                ShowMessage("Extracting (%d/%d): %s..." % (__Processed_Files__, __Total_Files__, MOV.path))
+
+                # Issue 7980 fix
+                datetime.strptime('', '')
+
+                # Assign thread id
+                Threads_Results[Index][7] = Index
+
+                # Lock thread slot
+                QUEUE_Slots[Index] = 1
+
+                # Compute output folder
+                Output = "%s/t%d" % (__Output__, Index)
+
+                # Create dir if not exists
+                if not os.path.isdir(Output):
+                    os.makedirs(Output)
+
+                # Create thread
+                ThreadJob = threading.Thread(
+                    target = extractMOV_Thread,
+                    args = (Index, Threads, MOV.path, Output, __Trash__, MOV.module, Threads_Results[Index])
+                )
+
+                # Start thread
+                ThreadJob.setDaemon(True)
+                ThreadJob.start()
+
+                # Increment index
+                __Processed_Files__ += 1
+
+                # Remove processed MOV file from list
+                __MOV_List_Optimized__.pop(0)
+
+            else:
+
+                # Wait 200ms
+                time.sleep(0.2)
+
+        # Exit threads
+        QUEUE_Done = -1
+
+    else:
+
+        # Initialize default threads results containers
+        for i in range(0, __Jobs__):
+            QUEUE_Slots.append(0)
+
+        # Create collector thread
+        CollectorThread = threading.Thread(
+            target = WorkerThread_CountCollector,
+            args = (Threads, __countMOV_Results__)
+        )
+
+        # Start collector thread
+        CollectorThread.setDaemon(True)
+        CollectorThread.start()
+
+        # Loop until all MOVS are extracted
+        while QUEUE_Done < __Total_Files__:
+
+            # Insert a new item to the queue if not full
+            if (UsedSlots(QUEUE_Slots) < __Jobs__) and (len(__MOV_List_Optimized__) > 0):
+
+                # Get an available thread slot
+                Index = GetSlot(QUEUE_Slots)
+
+                # Pick one MOV file
+                MOV = __MOV_List_Optimized__[0]
+
+                # Debug output
+                ShowMessage("Counting (%d/%d): %s..." % (__Processed_Files__, __Total_Files__, MOV.path))
+
+                # Issue 7980 fix
+                datetime.strptime('', '')
+
+                # Lock thread slot
+                QUEUE_Slots[Index] = 1
+
+                # Create thread
+                ThreadJob = threading.Thread(
+                    target = countMOV_Thread,
+                    args = (Threads, MOV.path, Index)
+                )
+
+                # Start thread
+                ThreadJob.setDaemon(True)
+                ThreadJob.start()
+
+                # Increment index
+                __Processed_Files__ += 1
+
+                # Remove processed MOV file from list
+                __MOV_List_Optimized__.pop(0)
+
+            else:
+
+                # Wait 200ms
+                time.sleep(0.2)
+
+        # Exit threads
+        QUEUE_Done = -1
+
 # Usage display function
 def _usage():
     print """
@@ -796,10 +993,12 @@ def _usage():
     [Optional arguments]
     -h --help           Prints this
 
+    -j --jobs           Jobs count (Threads)
+    -x --modules        Number of JP4 modules (Default 9)
     -c --count          Don't extract MOV files, just count images
     -m --maxfiles       Max JP4 files per folder, will create folders 0, 1, 2, 3 to place next files
     -k --kmlbase        KML base url
-    -s --state          State files folder (to save/resume job)
+    -g --filelist       Write final JP4 paths to file
     -l --logfile        Log file path
     -f --nofilter       Don't filter images (trashing)
 
@@ -813,48 +1012,48 @@ def _usage():
 # pylint: disable=W0603
 def main(argv):
 
+    # Global variables
+    global CAMERA_MODULES
+
     # Arguments variables initialisation
     __Folder__       = ""
     __Input__        = ""
     __Output__       = ""
     __Trash__        = ""
+    __Jobs__         = 1
     __Count_Images__ = 0
     __Max_Files__    = 0
+    __FileList__     = ""
     __KMLBase__      = "__BASE__URL__"
-    __State_Dir__   = ""
 
     # Scope variables initialisation
+    __Exec_Timer__         = time.clock()
     __MOV_List__           = []
     __MOV_List_Optimized__ = []
     __Total_Files__        = 0
-    __Processed_Files__    = 1
-    __State_List__         = {
-        'extracted_movs':   [],    # Extracted movs
-        'extracted_images': [],    # Extracted images
-        'extracted_images_data': { # Extracted images data
-            'files_counter': 0,    # Extracted files count
-            'limit_counter': 0,    # File limit counter
-            'limit_dir_index': 0   # File limit dir index
-        }
-    }
     __countMOV_Results__ = [
         0, # Images count
-        0  # Total images size
+        0, # Total images size
+        0  # Thread id
     ]
-    __extractMOV_Results__ = [
+    __extractMOV_Results_Template__ = [
         0,  # Fail counter
         [], # Last extracted files timestamps
         [], # Extracted files timestamps
         0,  # Extracted files count
         0,  # File limit value
         0,  # File limit counter
-        0   # File limit dir index
+        0,  # File limit dir index
+        0   # Thread id
     ]
+
+    __extractMOV_Results__ = __extractMOV_Results_Template__[:]
+
     __Filtered_Images__ = []
 
     # Arguments parser
     try:
-        opt, args = getopt.getopt(argv, "hf:i:o:t:k:cm:s:dql:nf", ["help", "folder=", "input=", "output=", "trash=", "kmlbase=", "count", "maxfiles=", "state=", "debug", "quiet", "logfile=", "nocolors", "nofilter"])
+        opt, args = getopt.getopt(argv, "hf:i:o:t:k:g:j:x:cm:dql:nf", ["help", "folder=", "input=", "output=", "trash=", "kmlbase=", "filelist=", "jobs=", "modules=", "count", "maxfiles=", "debug", "quiet", "logfile=", "nocolors", "nofilter"])
         args = args
     except getopt.GetoptError, err:
         print str(err)
@@ -872,16 +1071,20 @@ def main(argv):
             __Output__  = a.rstrip('/')
         elif o in ("-t", "--trash"):
             __Trash__  = a.rstrip('/')
+        elif o in ("-j", "--jobs"):
+            __Jobs__ = int(a)
+        elif o in ("-x", "--modules"):
+            CAMERA_MODULES = int(a)
         elif o in ("-c", "--count"):
             __Count_Images__ = 1
         elif o in ("-m", "--maxfiles"):
             __Max_Files__  = int(a)
-            __extractMOV_Results__[4] = __Max_Files__
-            __extractMOV_Results__[5] = __Max_Files__
+            __extractMOV_Results_Template__[4] = __Max_Files__
+            __extractMOV_Results_Template__[5] = __Max_Files__
         elif o in ("-k", "--kmlbase"):
             __KMLBase__  = a.rstrip('/')
-        elif o in ("-s", "--state"):
-            __State_Dir__  = a
+        elif o in ("-g", "--filelist"):
+            __FileList__ = a
         elif o in ("-d", "--debug"):
             global DEBUG_MODE
             DEBUG_MODE = 1
@@ -921,49 +1124,6 @@ def main(argv):
         if Trash:
             __Trash__ = Trash
 
-    # Append temp folder to output path
-    if __Max_Files__ != 0:
-        __Output__ = ("%s/temp" % __Output__)
-
-    # Create default directories
-    if __Output__ and not os.path.isdir(__Output__):
-        os.makedirs(__Output__)
-
-        if __Max_Files__ != 0:
-            os.makedirs('%s/0' % __Output__)
-
-    if __Output__ and not os.path.isdir(__Output__):
-        os.makedirs(__Output__)
-
-    if __Trash__ and not os.path.isdir(__Trash__):
-        os.makedirs(__Trash__)
-
-    # Check if state file option is specified
-    if __State_Dir__:
-
-        # Check presense of state folder
-        if not os.path.isdir(__State_Dir__):
-
-            # Create folder
-            os.makedirs(__State_Dir__)
-        else:
-
-            # Check presence of state files
-            if os.path.isfile("%s/mov.dat" % __State_Dir__) and os.path.isfile("%s/jp4.dat" % __State_Dir__) and os.path.isfile("%s/options.dat" % __State_Dir__):
-
-                # Load state file
-                __State_List__ = LoadState(__State_Dir__)
-
-                # Restore variables
-                __extractMOV_Results__[2] = __State_List__['extracted_images']
-                __extractMOV_Results__[3] = __State_List__['extracted_images_data']['files_counter']
-                __extractMOV_Results__[5] = __State_List__['extracted_images_data']['limit_counter']
-                __extractMOV_Results__[6] = __State_List__['extracted_images_data']['limit_dir_index']
-
-                # Debug output
-                if not quietEnabled():
-                    ShowMessage("State files loaded")
-
     # Arguments checking
     if not __Input__:
         _usage()
@@ -973,6 +1133,19 @@ def main(argv):
         if (not __Output__) or (not NO_FILTER and not __Trash__):
             _usage()
             return
+
+    # Append temp folder to output path
+    __Output__ = ("%s/temp" % __Output__)
+
+    # Create default directories
+    if __Output__ and not os.path.isdir(__Output__):
+        os.makedirs(__Output__)
+
+    if __Output__ and not os.path.isdir(__Output__):
+        os.makedirs(__Output__)
+
+    if __Trash__ and not os.path.isdir(__Trash__):
+        os.makedirs(__Trash__)
 
     # Get modules from input folder
     CameraModules = sorted(os.listdir(__Input__))
@@ -988,32 +1161,12 @@ def main(argv):
             Movs.append( MovFile(MOV, mn) )
         __MOV_List__.append(Movs)
 
-    # Check if all MOVS are extracted when state file is specified
-    if __State_Dir__:
-
-        # Result value
-        Finished = 1
-
-        # Iterate over MOV files and compare it to restored list
-        for MovArray in __MOV_List__:
-            for MOV in MovArray:
-                if not MOV.path in __State_List__['extracted_movs']:
-                    Finished = 0
-                    break
-
-        # If already extracted notify user and exit program
-        if Finished:
-            ShowMessage("All mov files already extracted, nothing to do", 1)
-            ShowMessage("Done")
-            return
-
     # Sort MOV files
     while len(__MOV_List__) > 0:
         for MovArray in __MOV_List__:
             for MOV in MovArray:
-                if not MOV.path in __State_List__['extracted_movs']:
-                    __MOV_List_Optimized__.append(MOV)
-                    __Total_Files__ += 1
+                __MOV_List_Optimized__.append(MOV)
+                __Total_Files__ += 1
                 MovArray.pop(0)
                 break
         if len(__MOV_List__[0]) <= 0:
@@ -1031,96 +1184,87 @@ def main(argv):
     if __Total_Files__ == 0:
         ShowMessage("No MOV files", 2)
 
-    # Walk over file list
-    for MOV in __MOV_List_Optimized__:
-        if not quietEnabled():
-            ShowMessage("Processing (%d/%d): %s..." % (__Processed_Files__, __Total_Files__, MOV.path))
+    #Create main thread
+    MainThread = threading.Thread(
+        target = WorkerThread,
+        args = (__extractMOV_Results__, __extractMOV_Results_Template__, __countMOV_Results__, __Jobs__, __Count_Images__, __Total_Files__, __MOV_List_Optimized__, __Output__, __Trash__)
+    )
 
-        # Extract MOV file and catch exceptions
-        try:
+    # Start main thread
+    MainThread.setDaemon(True)
+    MainThread.start()
 
-            # Count images if specified, else extract mov file into jp4 and store failed images
-            if __Count_Images__ == 0:
+    # Wait until main thread finishes
+    while MainThread.is_alive():
+        time.sleep(0.5)
 
-                #  Extract mov file into jp4 and store failed images
-                __extractMOV_Results__ = extractMOV(MOV.path, __Output__, __Trash__, MOV.module, __extractMOV_Results__)
-
-                # Save state (used to resume process)
-                if __State_Dir__:
-                    SaveState(__State_Dir__, MOV.path, __extractMOV_Results__)
-
-            else:
-
-                # Count images inside MOV file
-                Count = countMOV(MOV.path)
-
-                # Debug output
-                if not quietEnabled():
-                    ShowMessage("%d image(s) found, size: %s" % (Count[0], human_size(Count[1])))
-
-                # Increment total files count
-                __countMOV_Results__[0] += Count[0]
-                __countMOV_Results__[1] += Count[1]
-
-        except (IOError, MemoryError):
-            ShowMessage("MOV extraction error", 2)
-            traceback.print_exc()
-
-        # Increment files index indicator
-        __Processed_Files__ += 1
-
-    # Filter check
-    if not quietEnabled() and NO_FILTER == 0 and __Count_Images__ == 0:
-        # Debug output
-        ShowMessage("Filtering images...")
-
-        # Start image filtering
-        __Filtered_Images__ = filterImages(__Output__, __Trash__, __extractMOV_Results__, __State_Dir__)
-
-    # Check presence of max files option
-    if __Max_Files__ != 0:
-
-        # Clamp max files to 9
-        if __Max_Files__ < 9:
-            __Max_Files__ = 9
-
-        # Convert limit to a power of 9
-        Limit = (__Max_Files__ / 9) * 9
-
-        # Debug output
-        ShowMessage("Rearranging images...")
-
-        # Rearrange images
-        __Aranged_Images__ = rearrangeImages(__Output__, __Filtered_Images__, __Output__, Limit)
-    else:
-
-        # Just assign old list to new one
-        __Aranged_Images__ = __Filtered_Images__
-
-    # Generate KML if not in counting mode
+    # Check presence of count mode
     if __Count_Images__ == 0:
+
+        # Debug output
+        if not quietEnabled():
+            ShowMessage("Extraction done, %d image(s) extracted" % __extractMOV_Results__[3])
+
+        # Filter check
+        if not quietEnabled() and NO_FILTER == 0:
+            # Debug output
+            ShowMessage("Filtering images...")
+
+            # Start image filtering
+            __Filtered_Images__ = filterImages(__Output__, __Trash__, __extractMOV_Results__)
+
+        # Check presence of max files option
+        if __Max_Files__ != 0:
+
+            # Clamp max files to 9
+            if __Max_Files__ < CAMERA_MODULES:
+                __Max_Files__ = CAMERA_MODULES
+
+            # Convert limit to a power of 9
+            Limit = (__Max_Files__ / CAMERA_MODULES) * CAMERA_MODULES
+
+            # Debug output
+            if not quietEnabled():
+                ShowMessage("Rearranging images...")
+
+            # Rearrange images
+            __Aranged_Images__ = rearrangeImages(__Output__, __Filtered_Images__, __Output__, Limit)
+        else:
+
+            # Debug output
+            if not quietEnabled():
+                ShowMessage("Rearranging images...")
+
+            # Rearrange images
+            __Aranged_Images__ = rearrangeImages(__Output__, __Filtered_Images__, __Output__, -1)
+
+        # Check if filelist option is specified
+        if __FileList__:
+            with open(__FileList__, "w") as f:
+                for image in __Aranged_Images__:
+                    f.write("%s\n" % image.path)
+
         # Debug output
         if not quietEnabled():
             ShowMessage("Starting KML file generation...")
 
         # Generate KML file
-        if __Max_Files__ != 0:
-            generateKML('%s/..' % __Output__, __KMLBase__, __Aranged_Images__)
-        else:
-            generateKML(__Output__, __KMLBase__, __Aranged_Images__)
+        generateKML('%s/..' % __Output__, __KMLBase__, __Aranged_Images__)
 
-    # Remove temp folder
-    if __Max_Files__ != 0:
+        # Remove temp folder
         shutil.rmtree(__Output__)
 
-    # Debug output
-    if not quietEnabled() and __Count_Images__ != 0:
-        ShowMessage("Total images: %d" % __countMOV_Results__[0])
-        ShowMessage("Total size: %s" % human_size(__countMOV_Results__[1]))
+    else:
+
+        # Debug output
+        if not quietEnabled():
+            ShowMessage("Total images: %d" % __countMOV_Results__[0])
+            ShowMessage("Total size: %s" % human_size(__countMOV_Results__[1]))
 
     # Debug output
     if not quietEnabled():
-        ShowMessage("Done")
+        Delay = (time.clock() - __Exec_Timer__)
+        ShowMessage("Done in %s" % time.strftime("%H:%M:%S", time.gmtime(Delay)))
 
 # Program entry point
 if __name__ == "__main__":
