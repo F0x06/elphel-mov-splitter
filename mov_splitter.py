@@ -40,6 +40,7 @@
 """
 
 # Imports
+import calendar
 import datetime
 import getopt
 import glob
@@ -337,7 +338,8 @@ def extractMOV(tid, InputFile, OutputFolder, TrashFolder, ModuleName, Results_ba
 
             # Calculate the output filename
             date_object = datetime.strptime(str(EXIF_Tags["Image DateTime"]), '%Y:%m:%d %H:%M:%S')
-            Output_Name = "%s_%s_%s" % (date_object.strftime("%s"), EXIF_Tags["EXIF SubSecTimeOriginal"], ModuleName)
+            epoch = calendar.timegm(date_object.utctimetuple())
+            Output_Name = "%d_%s_%s" % (epoch, EXIF_Tags["EXIF SubSecTimeOriginal"], ModuleName)
 
             # Increment extracted files count
             Results[3] += 1
